@@ -1,0 +1,66 @@
+schema_version: 1
+variant: alohamini2pro_current_wheels_with_navigation_interface
+status: integrated_current_cad_wheels
+source:
+  repository: /home/anncatto/alohamini_lidar_imu
+  urdf: ros2_ws/src/alohamini_description/urdf/alohamini_nav.urdf
+  frame: base_link
+
+naming:
+  source_joint_names: [wheel1, wheel2, wheel3]
+  authoritative_joint_names: [wheel1_joint, wheel2_joint, wheel3_joint]
+  link_names: [wheel1, wheel2, wheel3]
+  reason: source_joint_names_collided_with_child_link_names
+
+geometry_authority:
+  source: current_alohamini2pro_cad
+  visual_meshes: [Link2_dp.STL, Link3_dp.STL, Link4_dp.STL]
+  wheel_radius_m: 0.063
+  base_radius_m: 0.195
+  runtime_reference: /home/anncatto/lerobot_alohamini/src/lerobot/robots/alohamini/model_specs.py
+
+legacy_navigation_reference:
+  wheel_radius_m: 0.05
+  base_radius_m: 0.125
+  applicability: older_model_only_not_alohamini2pro_geometry
+
+legacy_source_wheels:
+  wheel1:
+    position_xyz_m: [-0.1538, 0.091161, 0.0422]
+    orientation_rpy_rad: [0.0, 0.0, -2.1099]
+    axis_xyz: [0.0, -1.0, 0.0]
+    source_experimental_motor_id: 8
+  wheel2:
+    position_xyz_m: [0.15563, 0.087993, 0.0422]
+    orientation_rpy_rad: [0.0, 0.0, 2.086]
+    axis_xyz: [0.0, -1.0, 0.0]
+    source_experimental_motor_id: 10
+  wheel3:
+    position_xyz_m: [-0.0020354, -0.17875, 0.0422]
+    orientation_rpy_rad: [0.0, 0.0, 0.0]
+    axis_xyz: [-0.015476, -0.99988, 0.0]
+    source_experimental_motor_id: 9
+
+authoritative_wheels:
+  wheel1:
+    position_xyz_m: [-0.1337, 0.076522, 0.063355]
+    orientation_rpy_rad: [0.000033411, 1.5707, 2.618]
+    axis_xyz: [-0.000087287, 0.0, -1.0]
+  wheel2:
+    position_xyz_m: [-0.0014342, -0.15301, 0.063355]
+    orientation_rpy_rad: [1.5708, 1.5708, 0.0]
+    axis_xyz: [0.0, 0.0, -1.0]
+  wheel3:
+    position_xyz_m: [0.13115, 0.076408, 0.063355]
+    orientation_rpy_rad: [-1.5708, 0.0, -1.0472]
+    axis_xyz: [0.0, 0.0, -1.0]
+
+integration_constraints:
+  base_link_ros_axis_convention: unaudited
+  original_cad_link_names: [Link2_dp, Link3_dp, Link4_dp]
+  authoritative_link_names: [wheel1, wheel2, wheel3]
+  active_whole_robot_variant: current_cad_geometry_continuous_wheel_joints
+  legacy_lidar_meshes_are_preview_only: true
+  do_not_attach_both_wheel_variants: true
+  physical_motor_bus_owner: lerobot_host
+  experimental_cpp_backend_must_not_run_concurrently: true

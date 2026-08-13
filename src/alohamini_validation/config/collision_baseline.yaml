@@ -1,0 +1,27 @@
+schema_version: 1
+model: alohamini2pro_moveit
+geometry_counts:
+  links: 31
+  joints: 30
+  visuals: 26
+  collisions: 38
+  collision_boxes: 25
+  collision_meshes: 13
+  srdf_disabled_pairs: 37
+moving_jaw_vhacd_pieces_per_side: 6
+state_validity:
+  reference_clear:
+    valid: true
+    joints: {}
+    contact_pairs: []
+  right_lower_arm_into_base:
+    valid: false
+    joints:
+      left_shoulder_pan: -1.5
+      right_shoulder_pan: -2.0
+    contact_pairs:
+      - [base_link, right_Lower_Arm]
+notes:
+  - The exact base_link mesh remains collision geometry.
+  - Other detailed CAD collision meshes are conservative 2 mm padded local AABBs.
+  - This structural baseline does not certify physical collision clearance.

@@ -1,0 +1,15 @@
+schema_version: 1
+units:
+  command: normalized
+  joint_position: rad
+
+# Temporarily accepted 1:1 encoder mapping. P3 multi-gauge checks remain.
+mapping:
+  type: linear_joint_position
+  command_closed: 0.0
+  command_open: 1.0
+  joint_closed: 0.32
+  joint_open: -1.8030294104
+  calibrated: false
+
+initial_command: 1.0

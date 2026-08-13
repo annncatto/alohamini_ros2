@@ -1,0 +1,65 @@
+# AlohaMini ROS 2
+
+This workspace owns the authoritative ROS-facing robot description and the
+ROS 2 algorithm interfaces for AlohaMini. It does not replace LeRobot.
+
+LeRobot and ROS 2 are parallel upper layers over the same physical runtime:
+
+- LeRobot owns teleoperation, recording, datasets, replay, policy training,
+  VLA inference, action chunks, evaluation, camera observations, and local or
+  optional Hugging Face assets.
+- ROS 2 owns the authoritative description, TF, FK/IK, MoveIt, Servo,
+  standard trajectory interfaces, Nav2, state estimation, diagnostics,
+  simulation, and other algorithm interfaces.
+- The Python 3.12 LeRobot runtime and ROS 2 Humble/Python 3.10 runtime remain
+  isolated at a ZMQ boundary. The current command path is compatible, while
+  the old ROS bridge observation path is not.
+
+The verified physical Runtime/Host lives in `~/lerobot_alohamini`. It is the
+only current authority for motor serial ownership, command execution, state
+reads, and the hardware watchdog. See [docs/runtime_interfaces.md](docs/runtime_interfaces.md)
+for the current bridge compatibility boundary.
+
+Robot-description ownership is one-way: this repository publishes the public
+description and exports. ManiSkill and RoboTwin keep their own environments,
+tasks, controllers, and simulation adapters, and consume exported assets
+without writing changes back into the authoritative description. See
+[docs/description_ownership.md](docs/description_ownership.md).
+
+## Current scope
+
+The first core packages are `alohamini_description`, `alohamini_calibration`,
+and `alohamini_moveit_config`. They establish one upstream location for the
+CAD-derived whole-robot model, calibration assets, mesh assets, MoveIt
+semantics, and their provenance. `~/alohamini_lidar_imu` remains the source of
+the ROS bridge and an alternative experimental C++ `ros2_control` base
+backend; it is not the shared physical Runtime authority.
+
+The current whole-robot description uses `root` as its planning reference and
+preserves RoboTwin/CAD arm link and joint coordinates. It is deliberately not
+yet merged with the three-wheel model from `alohamini_lidar_imu`: the ROS
+`base_link` axis convention still needs a system-level audit.
+
+Build with:
+
+```bash
+colcon build --symlink-install --cmake-args -DPython3_EXECUTABLE=/usr/bin/python3
+source install/setup.bash
+ros2 launch alohamini_description description.launch.py
+ros2 launch alohamini_moveit_config plan_only.launch.py
+```
+
+Offline validation:
+
+```bash
+ros2 run alohamini_validation validate_assets
+ros2 launch alohamini_description view_model.launch.py
+
+# Headless TF check, in two terminals:
+ros2 launch alohamini_description view_model.launch.py use_gui:=false use_rviz:=false
+ros2 run alohamini_validation validate_tf
+
+# MoveIt service check, in two terminals:
+ros2 launch alohamini_moveit_config plan_only.launch.py use_rviz:=false
+ros2 run alohamini_validation validate_moveit
+```

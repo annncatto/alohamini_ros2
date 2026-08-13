@@ -1,0 +1,119 @@
+schema_version: 1
+robot_model: alohamini2pro
+side: right
+ticks_per_revolution: 4096
+joints:
+  shoulder_pan:
+    id: 1
+    model: sts3250
+    zero_tick: null
+    reference_tick: 2027
+    reference_q_rad: 0.0
+    sign: -1
+    positive_direction_sample_tick: null
+    positive_direction_delta_tick: null
+    safe_min_tick: 3418
+    safe_q_min_rad: -2.133767275948927
+    safe_max_tick: 567
+    safe_q_max_rad: 2.2396119503130363
+    direction_validation:
+      status: corrected_from_moveit_m4_hardware_test
+      date: "2026-08-11"
+      observed: A positive URDF shoulder_pan command increased raw ticks but moved opposite to the URDF positive direction.
+      required_raw_direction_for_positive_q: decreasing_ticks
+      invalidated_sample_tick: 2272
+      invalidated_sample_delta_tick: 245
+  shoulder_lift:
+    id: 2
+    model: sts3095
+    zero_tick: null
+    reference_tick: 2047
+    reference_q_rad: -1.571
+    sign: -1
+    positive_direction_sample_tick: 1715
+    positive_direction_delta_tick: -332
+    safe_max_tick: 918
+    safe_q_max_rad: 0.160864309522889
+    safe_min_tick: 3171
+    safe_q_min_rad: -3.2951944055834606
+  elbow_flex:
+    id: 3
+    model: sts3095
+    zero_tick: null
+    reference_tick: 1979
+    reference_q_rad: 1.571
+    sign: -1
+    positive_direction_sample_tick: 1646
+    positive_direction_delta_tick: -333
+    safe_min_tick: 3049
+    safe_q_min_rad: -0.0703594430376362
+    safe_max_tick: 904
+    safe_q_max_rad: 3.220029346977064
+  wrist_flex:
+    id: 4
+    model: sts3250
+    zero_tick: null
+    reference_tick: 2089
+    reference_q_rad: 0.0
+    sign: 1
+    positive_direction_sample_tick: 2325
+    positive_direction_delta_tick: 236
+    safe_max_tick: 3056
+    safe_q_max_rad: 1.483359421885415
+    safe_min_tick: 1016
+    safe_q_min_rad: -1.6459613854012929
+  wrist_yaw:
+    id: 5
+    model: sts3250
+    zero_tick: null
+    reference_tick: 2221
+    reference_q_rad: 0.0
+    sign: 1
+    positive_direction_sample_tick: 2709
+    positive_direction_delta_tick: 488
+    safe_min_tick: 1409
+    safe_q_min_rad: -1.2455923997631406
+    safe_max_tick: 2998
+    safe_q_max_rad: 1.191903072187143
+  wrist_roll:
+    id: 6
+    model: sts3250
+    zero_tick: null
+    reference_tick: 2057
+    reference_q_rad: 0.0
+    sign: -1
+    positive_direction_sample_tick: 1702
+    positive_direction_delta_tick: -355
+  gripper:
+    id: 7
+    model: sts3250
+    closed_tick: 2048
+    open_tick: 3432
+    reference_tick: 2048
+    reference_q_rad: 0.32
+    sign: -1
+    joint_per_encoder_ratio: 1.0
+    urdf_closed_rad: 0.32
+    urdf_open_rad: -1.8030294104
+reference_capture:
+  timestamp_unix: 1786070423.7148154
+  q_rad:
+  - 0.0
+  - -1.571
+  - 1.571
+  - 0.0
+  - 0.0
+  - 0.0
+  note: Operator explicitly confirmed physical pose matches the listed URDF q.
+gripper_capture:
+  closed:
+    tick: 2049
+    timestamp_unix: 1786070524.9040287
+  open:
+    tick: 3432
+    timestamp_unix: 1786070632.961292
+gripper_reference_override:
+  reference_tick: 2048
+  reference_q_rad: 0.32
+  source: operator_confirmed_nominal_closed_position
+  note: Original read-only closed capture was 2049; the accepted design reference is 2048.

@@ -1,0 +1,24 @@
+schema_version: 1
+model: alohamini2pro
+authority: alohamini_calibration
+
+hardware:
+  encoder_tick_rad_direction: hardware_test_corrected
+  shoulder_pan_correction_source: moveit_m4_hardware_test_2026_08_11
+  left_arm_mapping: inherits_single_measured_right_mapping
+  gripper_mapping: provisional_not_calibrated
+
+cameras:
+  forward_intrinsics: real_capture_candidate
+  right_wrist_intrinsics: real_capture_candidate
+  right_wrist_extrinsics: manual_candidate_not_hand_eye_calibrated
+  left_wrist_intrinsics: unavailable
+  left_wrist_extrinsics: unavailable
+
+bootstrap_sources:
+  hardware_and_gripper: robotwin_and_lerobot_hardware_test
+  camera_candidates: maniskill_outputs
+
+export_policy:
+  direction: ros_authority_to_downstream_only
+  reverse_sync_allowed: false

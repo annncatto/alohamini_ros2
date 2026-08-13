@@ -1,0 +1,7 @@
+moveit_setup_assistant_config:
+  urdf:
+    package: alohamini_description
+    relative_path: urdf/alohamini2pro_moveit.urdf
+  srdf:
+    relative_path: srdf/alohamini2pro.srdf
+

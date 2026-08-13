@@ -1,0 +1,42 @@
+schema_version: 1
+source:
+  capture_root: /home/anncatto/Sim/alohamini_camera_calibration/captures
+  board: AlohaMini_Charuco_A4_Universal_9x7_26mm
+  calibrated_at: "2026-08-11"
+  point_mode: marker_centers
+  note: >-
+    Simulation-only camera model candidates. Real AlohaMini images remain raw and
+    distorted; these parameters let ManiSkill synthesize the same equidistant
+    distortion without changing the robot transport or existing policies.
+
+cameras:
+  front_camera:
+    real_camera_name: forward
+    image_size: [640, 480]
+    distortion_model: equidistant
+    rms_px: 0.4101
+    camera_matrix:
+      - [385.81054424416965, 0.0, 344.6682288074081]
+      - [0.0, 386.9478079340189, 252.78222685173822]
+      - [0.0, 0.0, 1.0]
+    distortion: [-0.02888559594159282, -0.024579755118512757, 0.027972460426745976, -0.0019803476790380857]
+    # Ideal pinhole render covers every ray in the distorted 640x480 frame.
+    render_camera_matrix:
+      - [213.00437869715694, 0.0, 367.9442472133045]
+      - [0.0, 205.73086122650233, 259.8722550693245]
+      - [0.0, 0.0, 1.0]
+
+  right_wrist_camera:
+    real_camera_name: wrist_right
+    image_size: [640, 480]
+    distortion_model: equidistant
+    rms_px: 0.2903
+    camera_matrix:
+      - [390.45341972438456, 0.0, 332.07325355903544]
+      - [0.0, 391.4789447788863, 252.77376904861214]
+      - [0.0, 0.0, 1.0]
+    distortion: [-0.04798012688849845, 0.029271626296165105, -0.031113167396547882, 0.015439698179129258]
+    render_camera_matrix:
+      - [215.44221546720954, 0.0, 344.93273099052453]
+      - [0.0, 214.22745846877453, 260.39801225123296]
+      - [0.0, 0.0, 1.0]

@@ -1,0 +1,11 @@
+schema_version: 1
+robot_model: alohamini2pro
+side: left
+
+# The upstream AlohaMini2Pro calibration was measured with one physical arm
+# and is intentionally shared by both installed sides. Keeping a second copied
+# set of ticks here would make obsolete left-side captures look authoritative
+# and allow the two sides to drift.
+inherits: hardware_joint_map_right.yaml
+calibration_source_side: right
+note: Left and right use the same single-arm measurement; only the logical side/prefix differs.

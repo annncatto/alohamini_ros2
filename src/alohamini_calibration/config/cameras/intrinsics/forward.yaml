@@ -1,0 +1,55 @@
+image_width: 640
+image_height: 480
+camera_name: forward
+camera_matrix:
+  rows: 3
+  cols: 3
+  data:
+  - 385.81054424416965
+  - 0.0
+  - 344.6682288074081
+  - 0.0
+  - 386.9478079340189
+  - 252.78222685173822
+  - 0.0
+  - 0.0
+  - 1.0
+distortion_model: equidistant
+distortion_coefficients:
+  rows: 1
+  cols: 4
+  data:
+  - -0.02888559594159282
+  - -0.024579755118512757
+  - 0.027972460426745976
+  - -0.0019803476790380857
+rectification_matrix:
+  rows: 3
+  cols: 3
+  data:
+  - 1.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 1.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 1.0
+projection_matrix:
+  rows: 3
+  cols: 4
+  data:
+  - 385.81054424416965
+  - 0.0
+  - 344.6682288074081
+  - 0.0
+  - 0.0
+  - 386.9478079340189
+  - 252.78222685173822
+  - 0.0
+  - 0.0
+  - 0.0
+  - 1.0
+  - 0.0
+frame_id: forward_camera_optical

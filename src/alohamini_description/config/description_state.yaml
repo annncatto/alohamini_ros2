@@ -1,0 +1,36 @@
+schema_version: 1
+model: alohamini2pro
+authority: alohamini_description
+
+frames:
+  whole_robot_planning_reference: root
+  arm_link_joint_convention: robotiwin_cad_preserved
+  tcp: moveit_fixed_frames_integrated
+  base_link_ros_axis_convention: unaudited
+
+calibration_authority: alohamini_calibration
+collision_local_origins: changed_for_aabb_simplification
+
+integration:
+  physical_runtime_authority: /home/anncatto/lerobot_alohamini
+  ros_bridge_source: /home/anncatto/alohamini_lidar_imu
+  experimental_cpp_base_backend: /home/anncatto/alohamini_lidar_imu
+  motor_bus_ownership: lerobot_host_xor_cpp_ros2_control
+  runtime_bridge: zmq
+  command_transport_5555: compatible_push_to_host_pull
+  observation_transport_5556: bridge_outdated_pull_vs_host_router
+  description_merge_status: navigation_interface_integrated_with_current_wheel_cad
+  legacy_base_variant: lidar_repository_99mm_wheels
+  active_base_variant: alohamini2pro_126mm_cad_wheels_continuous_joints
+
+source_priority:
+  cad_and_robot_semantics: authoritative_in_this_ros_repository
+  bootstrap_cad_import: robotwin
+  bootstrap_moveit_import: lerobot_alohamini
+  hardware_direction_correction: moveit_m4_hardware_test_2026_08_11
+
+export_policy:
+  direction: ros_authority_to_downstream_only
+  downstreams: [lerobot, maniskill, robotwin]
+  reverse_sync_allowed: false
+  downstream_owned: [environment, task, controller, simulation_adapter]

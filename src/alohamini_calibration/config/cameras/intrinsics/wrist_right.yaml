@@ -1,0 +1,55 @@
+image_width: 640
+image_height: 480
+camera_name: wrist_right
+camera_matrix:
+  rows: 3
+  cols: 3
+  data:
+  - 390.45341972438456
+  - 0.0
+  - 332.07325355903544
+  - 0.0
+  - 391.4789447788863
+  - 252.77376904861214
+  - 0.0
+  - 0.0
+  - 1.0
+distortion_model: equidistant
+distortion_coefficients:
+  rows: 1
+  cols: 4
+  data:
+  - -0.04798012688849845
+  - 0.029271626296165105
+  - -0.031113167396547882
+  - 0.015439698179129258
+rectification_matrix:
+  rows: 3
+  cols: 3
+  data:
+  - 1.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 1.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 1.0
+projection_matrix:
+  rows: 3
+  cols: 4
+  data:
+  - 390.45341972438456
+  - 0.0
+  - 332.07325355903544
+  - 0.0
+  - 0.0
+  - 391.4789447788863
+  - 252.77376904861214
+  - 0.0
+  - 0.0
+  - 0.0
+  - 1.0
+  - 0.0
+frame_id: right_camera_optical

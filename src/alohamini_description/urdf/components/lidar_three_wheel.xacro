@@ -1,0 +1,77 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+  <!--
+    Three-wheel CAD component migrated from alohamini_lidar_imu.
+
+    The source URDF used identical names for each wheel link and joint.  This
+    component keeps the public link names but gives joints the unambiguous
+    wheelN_joint names already required by the source repository's Gazebo path.
+  -->
+  <xacro:macro name="alohamini_lidar_three_wheel" params="parent:=base_link prefix:=''">
+    <link name="${prefix}wheel1">
+      <inertial>
+        <origin xyz="-5.2748796340582E-05 0.0157741139634841 -1.84430449176598E-07" rpy="0 0 0"/>
+        <mass value="0.19481896281763"/>
+        <inertia ixx="5.08892096796909E-05" ixy="3.60517539503935E-11" ixz="2.69071538213238E-11"
+                 iyy="9.36352341038526E-05" iyz="-4.45292183145822E-12" izz="5.08902241573002E-05"/>
+      </inertial>
+      <visual>
+        <geometry><mesh filename="package://alohamini_description/meshes/source/lidar_three_wheel/wheel1.STL"/></geometry>
+        <material name="lidar_wheel_black"><color rgba="0.08 0.08 0.08 1"/></material>
+      </visual>
+      <collision>
+        <geometry><mesh filename="package://alohamini_description/meshes/source/lidar_three_wheel/wheel1.STL"/></geometry>
+      </collision>
+    </link>
+    <joint name="${prefix}wheel1_joint" type="continuous">
+      <origin xyz="-0.1538 0.091161 0.0422" rpy="0 0 -2.1099"/>
+      <parent link="${parent}"/>
+      <child link="${prefix}wheel1"/>
+      <axis xyz="0 -1 0"/>
+    </joint>
+
+    <link name="${prefix}wheel2">
+      <inertial>
+        <origin xyz="-6.44947300230958E-06 0.0157740656100239 -5.23561600380557E-05" rpy="0 0 0"/>
+        <mass value="0.194818035649416"/>
+        <inertia ixx="5.08900024988905E-05" ixy="-1.20873751512226E-12" ixz="-2.02779746634605E-10"
+                 iyy="9.36349961033418E-05" iyz="5.35464291484247E-11" izz="5.08890471060775E-05"/>
+      </inertial>
+      <visual>
+        <geometry><mesh filename="package://alohamini_description/meshes/source/lidar_three_wheel/wheel2.STL"/></geometry>
+        <material name="lidar_wheel_black"/>
+      </visual>
+      <collision>
+        <geometry><mesh filename="package://alohamini_description/meshes/source/lidar_three_wheel/wheel2.STL"/></geometry>
+      </collision>
+    </link>
+    <joint name="${prefix}wheel2_joint" type="continuous">
+      <origin xyz="0.15563 0.087993 0.0422" rpy="0 0 2.086"/>
+      <parent link="${parent}"/>
+      <child link="${prefix}wheel2"/>
+      <axis xyz="0 -1 0"/>
+    </joint>
+
+    <link name="${prefix}wheel3">
+      <inertial>
+        <origin xyz="0.000217589099159171 0.0157726511952609 -4.56400979924609E-05" rpy="0 0 0"/>
+        <mass value="0.194818526867466"/>
+        <inertia ixx="5.08999061873463E-05" ixy="6.61616290797392E-07" ixz="-7.54847308347756E-10"
+                 iyy="9.36248071320913E-05" iyz="7.68531292230303E-11" izz="5.08898375022648E-05"/>
+      </inertial>
+      <visual>
+        <geometry><mesh filename="package://alohamini_description/meshes/source/lidar_three_wheel/wheel3.STL"/></geometry>
+        <material name="lidar_wheel_black"/>
+      </visual>
+      <collision>
+        <geometry><mesh filename="package://alohamini_description/meshes/source/lidar_three_wheel/wheel3.STL"/></geometry>
+      </collision>
+    </link>
+    <joint name="${prefix}wheel3_joint" type="continuous">
+      <origin xyz="-0.0020354 -0.17875 0.0422" rpy="0 0 0"/>
+      <parent link="${parent}"/>
+      <child link="${prefix}wheel3"/>
+      <axis xyz="-0.015476 -0.99988 0"/>
+    </joint>
+  </xacro:macro>
+</robot>

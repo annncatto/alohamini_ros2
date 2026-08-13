@@ -1,0 +1,13 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="alohamini_lidar_three_wheel_preview">
+  <xacro:include filename="$(find alohamini_description)/urdf/components/lidar_three_wheel.xacro"/>
+
+  <!-- A small marker makes the unaudited source base frame visible in RViz. -->
+  <link name="base_link">
+    <visual>
+      <geometry><cylinder radius="0.015" length="0.10"/></geometry>
+      <material name="base_axis_marker"><color rgba="0.8 0.2 0.2 0.8"/></material>
+    </visual>
+  </link>
+  <xacro:alohamini_lidar_three_wheel parent="base_link"/>
+</robot>

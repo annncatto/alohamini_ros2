@@ -1,0 +1,93 @@
+schema_version: 1
+status: manual_candidate_not_hand_eye_calibrated
+camera: wrist_right
+mount_link: right_camera
+image_geometry: raw_equidistant
+conventions:
+  sapien_camera: +X forward, +Y left, +Z up
+  opencv_optical: +X right, +Y down, +Z forward
+  quaternion_order: wxyz
+T_mount_link_from_sapien_camera:
+  xyz_m:
+  - 0.0
+  - 0.0
+  - 0.0020000000949949026
+  quaternion_wxyz:
+  - 0.5254827450191363
+  - 0.473146789823711
+  - -0.4911976448631883
+  - 0.5086500502777203
+  rpy_xyz_deg:
+  - -1.9999999437555764
+  - -86.00000011877577
+  - 89.9999999452481
+  matrix:
+  - - 0.0
+    - -0.9993908405303955
+    - -0.03489949554204941
+    - 0.0
+  - - 0.06975647062063217
+    - 0.03481448441743851
+    - -0.9969563484191895
+    - 0.0
+  - - 0.9975640773773193
+    - -0.002434465801343322
+    - 0.06971397995948792
+    - 0.0020000000949949026
+  - - 0.0
+    - 0.0
+    - 0.0
+    - 1.0
+T_mount_link_from_camera_optical:
+  xyz_m:
+  - 0.0
+  - 0.0
+  - 0.0020000000949949026
+  quaternion_wxyz:
+  - 0.9992386149918779
+  - -0.0348941803049787
+  - -0.0006090801490306888
+  - -0.017441774890447206
+  matrix:
+  - - 0.9993908405303955
+    - 0.03489949554204941
+    - 0.0
+    - 0.0
+  - - -0.03481448441743851
+    - 0.9969563484191895
+    - 0.06975647062063217
+    - 0.0
+  - - 0.002434465801343322
+    - -0.06971397995948792
+    - 0.9975640773773193
+    - 0.0020000000949949026
+  - - 0.0
+    - 0.0
+    - 0.0
+    - 1.0
+diagnostic_projections:
+  TCP:
+    uv_px:
+    - 310.3352365686312
+    - 292.9467339916252
+    depth_m: 0.12442310154438019
+    in_frame: true
+  CUBE:
+    uv_px:
+    - 337.4060625522571
+    - -94.95964910265789
+    depth_m: 0.20249147713184357
+    in_frame: false
+  FIXED_LINK:
+    uv_px:
+    - 302.4688807370781
+    - 640.3958224183343
+    depth_m: 0.03636039048433304
+    in_frame: false
+  MOVING_LINK:
+    uv_px:
+    - 416.1671107481156
+    - 537.1158730849245
+    depth_m: 0.056867338716983795
+    in_frame: false
+warning: Validate against real wrist images, then replace with hand-eye calibration.

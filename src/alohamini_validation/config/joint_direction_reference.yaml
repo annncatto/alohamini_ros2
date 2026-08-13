@@ -1,0 +1,11 @@
+schema_version: 1
+visual_test_step_rad: 0.15
+joint_state_gui:
+  shoulder_pan: {urdf_axis_xyz: [0, 0, -1], positive_q_raw_tick_direction: decreasing}
+  shoulder_lift: {urdf_axis_xyz: [0, 0, -1], positive_q_raw_tick_direction: decreasing}
+  elbow_flex: {urdf_axis_xyz: [0, 0, -1], positive_q_raw_tick_direction: decreasing}
+  wrist_flex: {urdf_axis_xyz: [0, 0, 1], positive_q_raw_tick_direction: increasing}
+  wrist_yaw_joint: {urdf_axis_xyz: [0, 0, -1], positive_q_raw_tick_direction: increasing}
+  wrist_roll: {urdf_axis_xyz: [0, 0, 1], positive_q_raw_tick_direction: decreasing}
+  gripper: {urdf_axis_xyz: [0, 0, 1], positive_q_raw_tick_direction: decreasing}
+note: URDF positive rotation follows the listed local joint axis by the right-hand rule; raw tick direction is a separate hardware mapping.

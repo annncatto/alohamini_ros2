@@ -1,0 +1,20 @@
+schema_version: 1
+
+moving_jaw_vhacd:
+  bootstrap_generator: /home/anncatto/RoboTwin/script/generate_alohamini_collision_meshes.py
+  generator_migrated: false
+  source: ../../meshes/visual/left_Moving_Jaw.STL
+  source_sha256: 01710e46191ba7e868cc78bdf34faafef7b154ee8869e2ec5a484ef13c81aea9
+  left_right_source_identical: true
+  output_glob: ../collision_meshes/moving_jaw_vhacd_*.stl
+  parameters:
+    maxConvexHulls: 6
+    resolution: 100000
+    minimumVolumePercentErrorAllowed: 2.0
+    maxNumVerticesPerCH: 32
+  measured_volume_cm3:
+    visual_mesh: 28.78519653464993
+    old_single_convex_hull: 60.815154935831956
+    generated_six_piece_total: 32.85102427886363
+  status: simulation_provisional
+  note: Physical jaw geometry and safety clearance still require hardware comparison.

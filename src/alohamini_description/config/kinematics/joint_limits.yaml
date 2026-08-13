@@ -1,0 +1,30 @@
+schema_version: 1
+units:
+  revolute_position: rad
+  prismatic_position: m
+  revolute_velocity: rad/s
+  prismatic_velocity: m/s
+
+# Values inherited from the CAD-exported URDF unless noted otherwise. An entry
+# marked calibrated: false must not be treated as a physical safety limit.
+joints:
+  root_x_axis_joint: {type: prismatic, lower: -20.0, upper: 20.0, velocity: 1.0, effort: 500.0, calibrated: false}
+  root_y_axis_joint: {type: prismatic, lower: -20.0, upper: 20.0, velocity: 1.0, effort: 500.0, calibrated: false}
+  root_z_rotation_joint: {type: revolute, lower: -6.28, upper: 6.28, velocity: 1.0, effort: 500.0, calibrated: false}
+  vertical_move: {type: prismatic, lower: -0.3, upper: 0.3, velocity: 0.05, effort: 74.2, calibrated: provisional_from_sts3095_c002_rating_and_screw_lead}
+
+  left_shoulder_pan: {type: revolute, lower: -3.14, upper: 3.14, velocity: 4.2, effort: 1.57, calibrated: provisional_from_servo_rating}
+  left_shoulder_lift: {type: revolute, lower: -3.14, upper: 3.14, velocity: 2.48, effort: 2.21, calibrated: provisional_from_sts3095_c002_rating}
+  left_elbow_flex: {type: revolute, lower: -3.14, upper: 3.14, velocity: 2.48, effort: 2.21, calibrated: provisional_from_sts3095_c002_rating}
+  left_wrist_flex: {type: revolute, lower: -3.14, upper: 3.14, velocity: 4.2, effort: 1.57, calibrated: provisional_from_servo_rating}
+  left_wrist_yaw_joint: {type: revolute, lower: -3.14, upper: 3.14, velocity: 4.2, effort: 1.57, calibrated: provisional_from_servo_rating}
+  left_wrist_roll: {type: revolute, lower: -3.14, upper: 3.14, velocity: 4.2, effort: 1.57, calibrated: provisional_from_servo_rating}
+  left_gripper: {type: revolute, lower: -1.8030294104, upper: 0.32, velocity: 4.2, effort: 1.57, calibrated: provisional_from_servo_rating}
+
+  right_shoulder_pan: {type: revolute, lower: -3.14, upper: 3.14, velocity: 4.2, effort: 1.57, calibrated: provisional_from_servo_rating}
+  right_shoulder_lift: {type: revolute, lower: -3.14, upper: 3.14, velocity: 2.48, effort: 2.21, calibrated: provisional_from_sts3095_c002_rating}
+  right_elbow_flex: {type: revolute, lower: -3.14, upper: 3.14, velocity: 2.48, effort: 2.21, calibrated: provisional_from_sts3095_c002_rating}
+  right_wrist_flex: {type: revolute, lower: -3.14, upper: 3.14, velocity: 4.2, effort: 1.57, calibrated: provisional_from_servo_rating}
+  right_wrist_yaw_joint: {type: revolute, lower: -3.14, upper: 3.14, velocity: 4.2, effort: 1.57, calibrated: provisional_from_servo_rating}
+  right_wrist_roll: {type: revolute, lower: -3.14, upper: 3.14, velocity: 4.2, effort: 1.57, calibrated: provisional_from_servo_rating}
+  right_gripper: {type: revolute, lower: -1.8030294104, upper: 0.32, velocity: 4.2, effort: 1.57, calibrated: provisional_from_servo_rating}

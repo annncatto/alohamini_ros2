@@ -1,0 +1,87 @@
+schema_version: 1
+source:
+  kind: verified_manufacturer_datasheet_summary
+  path: ../references/FEETECH_servo_calibration_parameters_verified_summary.md
+  sha256: 76ba1e6eeeb3abc2e67f1749a6303d17fd1e377b71a5457e8a13edf2382debc2
+  verified_date: 2026-08-10
+  manufacturer_datasheet_verified: true
+  note: Base summary remains historical evidence; installed STS3095 is overridden by the verified C002 source below.
+  installed_variant_overrides:
+    sts3095_c002:
+      path: ../references/FEETECH_STS3095_C002_verified_parameters.md
+      sha256: 74fddb3334e2543dd4c01565bd03b03b191a4802b8bdcca700c6f6222958660d
+      verified_date: 2026-08-10
+
+servos:
+  st_3215_c018:
+    role: leader_only
+    voltage_v: 12.0
+    no_load_speed_rad_s: 4.71
+    stall_torque_nm: 2.94
+    rated_torque_nm: 0.98
+    stall_current_a: 2.7
+    rated_current_a: 0.9
+    reduction_ratio: 345
+    backlash_deg_max: 0.5
+    simulation_velocity_limit_rad_s: 4.2
+    simulation_force_limit_nm: 0.98
+    note: LeRobot calls the leader model sts3215; confirm that the installed label maps to the documented ST-3215-C018 variant.
+
+  sts3250:
+    voltage_v: 12.0
+    no_load_speed_rad_s: 7.85
+    stall_torque_nm: 4.90
+    rated_torque_nm: 1.57
+    stall_current_a: 4.2
+    rated_current_a: 1.4
+    reduction_ratio: 345
+    backlash_deg_max: 0.5
+    simulation_velocity_limit_rad_s: 4.2
+    simulation_force_limit_nm: 1.57
+
+  sts3095_c002:
+    voltage_v: 12.0
+    no_load_speed_s_per_60_deg: 0.322
+    no_load_speed_rpm: 31.0
+    no_load_speed_rad_s: 3.25
+    stall_torque_nm: 9.32
+    rated_torque_nm: 2.21
+    stall_current_a: 9.8
+    rated_current_a: 2.2
+    torque_constant_kg_cm_per_a: 10.0
+    reduction_ratio: 399
+    backlash_deg_max: 0.5
+    load_speed_model: omega_0_times_one_minus_tau_over_tau_stall
+    rated_load_speed_rad_s: 2.4793454936
+    simulation_velocity_limit_rad_s: 2.48
+    simulation_force_limit_nm: 2.21
+    note: Simulation uses the rated-load speed approximation, not the 3.25 rad/s no-load speed.
+
+joint_mapping:
+  arms:
+    shoulder_pan: sts3250
+    shoulder_lift: sts3095_c002
+    elbow_flex: sts3095_c002
+    wrist_flex: sts3250
+    wrist_yaw_joint: sts3250
+    wrist_roll: sts3250
+    gripper: sts3250
+  base_wheels:
+    servo: sts3250
+    count: 3
+    generalized_limits_pending: wheel_radius_and_jacobian
+  lift:
+    servo: sts3095_c002
+    screw_lead_m_per_rev: 0.131
+    ideal_rated_linear_speed_m_s: 0.0516926119
+    ideal_rated_linear_force_n: 105.9987750
+    assumed_efficiency: 0.70
+    simulation_velocity_limit_m_s: 0.05
+    simulation_force_limit_n: 74.2
+    note: Speed uses omega at rated torque; F=2*pi*tau/lead and v=omega*lead/(2*pi). Verify lead, efficiency, current limit, and screw safety experimentally.
+
+controller_identification:
+  stiffness: pending_step_response
+  damping: pending_step_response
+  friction: pending_loaded_motion_test
+  current_protection: pending_voltage_specific_hardware_test
