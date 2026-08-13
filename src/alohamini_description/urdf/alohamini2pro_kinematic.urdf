@@ -49,7 +49,7 @@
   <link name="wheel1">
     </link>
   <joint name="wheel1_joint" type="continuous">
-    <origin xyz="-0.1337 0.076522 0.063355" rpy="3.3411E-05 1.5707 2.618" />
+    <origin xyz="-0.130229464 0.074533188 0.063355" rpy="3.3411E-05 1.5707 2.618" />
     <parent link="base_link" />
     <child link="wheel1" />
     <axis xyz="-8.7287E-05 0 -1" />
@@ -57,7 +57,7 @@
   <link name="wheel2">
     </link>
   <joint name="wheel2_joint" type="continuous">
-    <origin xyz="-0.0014342 -0.15301 0.063355" rpy="1.5708 1.5708 0" />
+    <origin xyz="-0.001402062 -0.149010130 0.063355" rpy="1.5708 1.5708 0" />
     <parent link="base_link" />
     <child link="wheel2" />
     <axis xyz="0 0 -1" />
@@ -65,7 +65,7 @@
   <link name="wheel3">
     </link>
   <joint name="wheel3_joint" type="continuous">
-    <origin xyz="0.13115 0.076408 0.063355" rpy="-1.5708 0 -1.0472" />
+    <origin xyz="0.127692644 0.074396362 0.063355" rpy="-1.5708 0 -1.0472" />
     <parent link="base_link" />
     <child link="wheel3" />
     <axis xyz="0 0 -1" />

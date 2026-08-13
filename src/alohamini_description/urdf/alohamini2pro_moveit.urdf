@@ -46,7 +46,7 @@
       </material>
     </visual>
     <collision>
-      <origin xyz="1.17346644402e-06 0 0.0255000028726" rpy="0 0 0" />
+      <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
         <mesh filename="package://alohamini_description/meshes/visual/base_link.STL" />
       </geometry>
@@ -125,14 +125,14 @@
       </material>
     </visual>
     <collision>
-      <origin xyz="3.72529029846e-09 0 0.0254999993271" rpy="0 0 0" />
+      <origin xyz="1.17346644402e-06 0 0.0255000028726" rpy="0 0 0" />
       <geometry>
-        <box size="0.130920185983 0.130920193434 0.055002771414" />
+        <cylinder radius="0.0634601" length="0.0510028" />
       </geometry>
     </collision>
   </link>
   <joint name="wheel1_joint" type="continuous">
-    <origin xyz="-0.1337 0.076522 0.063355" rpy="3.3411E-05 1.5707 2.618" />
+    <origin xyz="-0.130229464 0.074533188 0.063355" rpy="3.3411E-05 1.5707 2.618" />
     <parent link="base_link" />
     <child link="wheel1" />
     <axis xyz="-8.7287E-05 0 -1" />
@@ -151,14 +151,14 @@
       <material name=""><color rgba="0.752941176470588 0.752941176470588 0.752941176470588 1" /></material>
     </visual>
     <collision>
-      <origin xyz="0 0 0.0254999996675" rpy="0 0 0" />
+      <origin xyz="3.72529029846e-09 0 0.0254999993271" rpy="0 0 0" />
       <geometry>
-        <box size="0.130920185983 0.130920193434 0.0550000143396" />
+        <cylinder radius="0.0634601" length="0.0510001" />
       </geometry>
     </collision>
   </link>
   <joint name="wheel2_joint" type="continuous">
-    <origin xyz="-0.0014342 -0.15301 0.063355" rpy="1.5708 1.5708 0" />
+    <origin xyz="-0.001402062 -0.149010130 0.063355" rpy="1.5708 1.5708 0" />
     <parent link="base_link" />
     <child link="wheel2" />
     <axis xyz="0 0 -1" />
@@ -177,14 +177,14 @@
       <material name=""><color rgba="0.752941176470588 0.752941176470588 0.752941176470588 1" /></material>
     </visual>
     <collision>
-      <origin xyz="0 0 0" rpy="0 0 0" />
+      <origin xyz="0 0 0.0254999996675" rpy="0 0 0" />
       <geometry>
-        <box size="0.13089204514 0.13092181766 0.0550000136589" />
+        <cylinder radius="0.0634609" length="0.0510001" />
       </geometry>
     </collision>
   </link>
   <joint name="wheel3_joint" type="continuous">
-    <origin xyz="0.13115 0.076408 0.063355" rpy="-1.5708 0 -1.0472" />
+    <origin xyz="0.127692644 0.074396362 0.063355" rpy="-1.5708 0 -1.0472" />
     <parent link="base_link" />
     <child link="wheel3" />
     <axis xyz="0 0 -1" />

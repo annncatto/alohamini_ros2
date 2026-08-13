@@ -5,7 +5,8 @@ geometry_counts:
   joints: 30
   visuals: 26
   collisions: 38
-  collision_boxes: 25
+  collision_boxes: 22
+  collision_cylinders: 3
   collision_meshes: 13
   srdf_disabled_pairs: 37
 moving_jaw_vhacd_pieces_per_side: 6
@@ -23,5 +24,6 @@ state_validity:
       - [base_link, right_Lower_Arm]
 notes:
   - The exact base_link mesh remains collision geometry.
-  - Other detailed CAD collision meshes are conservative 2 mm padded local AABBs.
+  - Arm and sensor CAD collision meshes use conservative 2 mm padded local AABBs.
+  - Wheels use unpadded cylinders fitted to the current CAD extents.
   - This structural baseline does not certify physical collision clearance.

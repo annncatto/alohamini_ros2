@@ -6,6 +6,9 @@ Authoritative robot-specific calibration assets for AlohaMini.
   range. The left logical arm currently inherits the one physically measured
   arm mapping.
 - `config/gripper/`: normalized command to URDF joint mapping.
+- `config/geometry/`: candidate geometric fit adjustments applied to the
+  authoritative description, retaining their uncalibrated status and CAD
+  baselines.
 - `config/cameras/camera_models.yaml`: capture-derived camera model metadata.
 - `config/cameras/intrinsics/`: ROS camera-info candidates.
 - `config/cameras/extrinsics/`: explicitly labelled manual candidates.

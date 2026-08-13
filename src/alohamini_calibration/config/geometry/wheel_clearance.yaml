@@ -1,0 +1,25 @@
+schema_version: 1
+model: alohamini2pro
+status: candidate_applied
+calibrated: false
+source: rviz_visual_intersection_reported_2026_08_13
+
+adjustment:
+  radial_inward_offset_m: 0.004
+  applied_to: [wheel1_joint, wheel2_joint, wheel3_joint]
+  changes: joint_translation_only
+  unchanged: [joint_orientation, joint_axis, wheel_radius, navigation_kinematics]
+
+cad_joint_xyz_m:
+  wheel1_joint: [-0.1337, 0.076522, 0.063355]
+  wheel2_joint: [-0.0014342, -0.15301, 0.063355]
+  wheel3_joint: [0.13115, 0.076408, 0.063355]
+
+adjusted_joint_xyz_m:
+  wheel1_joint: [-0.130229464, 0.074533188, 0.063355]
+  wheel2_joint: [-0.001402062, -0.149010130, 0.063355]
+  wheel3_joint: [0.127692644, 0.074396362, 0.063355]
+
+acceptance:
+  visual_clearance_confirmed_on_rviz: false
+  physical_wheel_axis_measured: false

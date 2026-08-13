@@ -236,6 +236,7 @@ def validate_collision(description: Path, validation: Path) -> None:
         "visuals": len(model.findall(".//visual")),
         "collisions": len(model.findall(".//collision")),
         "collision_boxes": len(model.findall(".//collision/geometry/box")),
+        "collision_cylinders": len(model.findall(".//collision/geometry/cylinder")),
         "collision_meshes": len(model.findall(".//collision/geometry/mesh")),
         "srdf_disabled_pairs": len(srdf.findall("disable_collisions")),
     }
@@ -256,7 +257,10 @@ def validate_collision(description: Path, validation: Path) -> None:
         visual_meshes = links[wheel].findall("visual/geometry/mesh")
         assert len(visual_meshes) == 1
         assert visual_meshes[0].get("filename").endswith(f"/Link{index}_dp.STL")
-        assert len(links[wheel].findall("collision/geometry/box")) == 1
+        cylinders = links[wheel].findall("collision/geometry/cylinder")
+        assert len(cylinders) == 1
+        assert float(cylinders[0].get("radius")) > 0
+        assert float(cylinders[0].get("length")) > 0
     for box in model.findall(".//collision/geometry/box"):
         assert np.all(np.fromstring(box.get("size"), sep=" ") > 0)
 
