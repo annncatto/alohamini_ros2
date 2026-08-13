@@ -12,8 +12,8 @@ LeRobot and ROS 2 are parallel upper layers over the same physical runtime:
   standard trajectory interfaces, Nav2, state estimation, diagnostics,
   simulation, and other algorithm interfaces.
 - The Python 3.12 LeRobot runtime and ROS 2 Humble/Python 3.10 runtime remain
-  isolated at a ZMQ boundary. The current command path is compatible, while
-  the old ROS bridge observation path is not.
+  isolated at a ZMQ boundary. `alohamini_lerobot_bridge` implements the current
+  DEALER/multipart observation path and the explicitly enabled command path.
 
 The verified physical Runtime/Host lives in `~/lerobot_alohamini`. It is the
 only current authority for motor serial ownership, command execution, state
@@ -28,17 +28,18 @@ without writing changes back into the authoritative description. See
 
 ## Current scope
 
-The first core packages are `alohamini_description`, `alohamini_calibration`,
-and `alohamini_moveit_config`. They establish one upstream location for the
+The core packages are `alohamini_description`, `alohamini_calibration`,
+`alohamini_moveit_config`, and `alohamini_lerobot_bridge`. They establish one upstream location for the
 CAD-derived whole-robot model, calibration assets, mesh assets, MoveIt
 semantics, and their provenance. `~/alohamini_lidar_imu` remains the source of
 the ROS bridge and an alternative experimental C++ `ros2_control` base
 backend; it is not the shared physical Runtime authority.
 
 The current whole-robot description uses `root` as its planning reference and
-preserves RoboTwin/CAD arm link and joint coordinates. It is deliberately not
-yet merged with the three-wheel model from `alohamini_lidar_imu`: the ROS
-`base_link` axis convention still needs a system-level audit.
+preserves RoboTwin/CAD arm link and joint coordinates. Its current AlohaMini2Pro
+wheel CAD is exposed through continuous ROS wheel joints and the verified
+LeRobot runtime wheel ordering. The ROS `base_link` axis convention still needs
+a system-level audit.
 
 Build with:
 
@@ -47,6 +48,9 @@ colcon build --symlink-install --cmake-args -DPython3_EXECUTABLE=/usr/bin/python
 source install/setup.bash
 ros2 launch alohamini_description description.launch.py
 ros2 launch alohamini_moveit_config plan_only.launch.py
+
+# Shared physical runtime state bridge; read-only by default:
+ros2 launch alohamini_lerobot_bridge runtime.launch.py host:=127.0.0.1
 ```
 
 Offline validation:

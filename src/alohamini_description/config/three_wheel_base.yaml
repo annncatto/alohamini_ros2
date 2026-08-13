@@ -46,14 +46,20 @@ authoritative_wheels:
     position_xyz_m: [-0.130229464, 0.074533188, 0.063355]
     orientation_rpy_rad: [0.000033411, 1.5707, 2.618]
     axis_xyz: [-0.000087287, 0.0, -1.0]
+    runtime_role: base_left_wheel
+    runtime_motor_id: 8
   wheel2:
     position_xyz_m: [-0.001402062, -0.149010130, 0.063355]
     orientation_rpy_rad: [1.5708, 1.5708, 0.0]
     axis_xyz: [0.0, 0.0, -1.0]
+    runtime_role: base_back_wheel
+    runtime_motor_id: 9
   wheel3:
     position_xyz_m: [0.127692644, 0.074396362, 0.063355]
     orientation_rpy_rad: [-1.5708, 0.0, -1.0472]
     axis_xyz: [0.0, 0.0, -1.0]
+    runtime_role: base_right_wheel
+    runtime_motor_id: 10
 
 wheel_clearance_adjustment:
   status: candidate_applied

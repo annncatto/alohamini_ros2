@@ -1,0 +1,25 @@
+alohamini_lerobot_bridge:
+  ros__parameters:
+    host: 127.0.0.1
+    command_port: 5555
+    observation_port: 5556
+    request_window: 3
+    rate_hz: 30.0
+    observation_timeout_sec: 0.5
+    request_timeout_sec: 1.0
+    command_timeout_sec: 0.5
+    expected_robot_model: alohamini2pro
+    require_model_match: true
+    cmd_vel_topic: /cmd_vel
+    joint_states_topic: /joint_states
+    base_velocity_topic: /alohamini/base_velocity
+    base_frame: base_link
+    max_linear_speed: 0.25
+    max_lateral_speed: 0.25
+    max_angular_speed: 1.0
+    linear_x_scale: 1.0
+    linear_y_scale: 1.0
+    angular_z_scale: 1.0
+    swap_xy: false
+    wheel_radius: 0.063
+    base_radius: 0.195

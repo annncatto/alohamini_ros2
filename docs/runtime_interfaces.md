@@ -16,7 +16,7 @@ LeRobot Host owns the same motor bus.
 | Port | Host | Required client | Old lidar bridge | Status |
 |---|---|---|---|---|
 | 5555 command | `PULL`, conflated JSON actions | `PUSH` | `PUSH` | compatible |
-| 5556 observation | request-driven `ROUTER` | `DEALER`, sends request token | passive `PULL` | incompatible |
+| 5556 observation | request-driven `ROUTER` | `DEALER`, sends request token | passive `PULL` | replaced here |
 
 The latest 5556 response is multipart:
 
@@ -35,5 +35,17 @@ zero body-velocity command continuously even though the 5555 command socket is
 otherwise compatible. Disabling that gate would remove the symptom but would
 not repair observation or odometry, so it is not a protocol fix.
 
-This document records the current interface boundary only. The bridge is not
-being migrated in the initial description/MoveIt consolidation.
+`alohamini_lerobot_bridge` implements the current DEALER request/reply path. It
+uses `:state` requests, publishes real Host arm/lift feedback after converting
+Host normalization through the supplied motor metadata and authoritative ROS
+calibration, and derives wheel joint velocity from measured base velocity for
+joint visualization. It does not integrate a base pose.
+
+The ROS command socket is disabled by default. Port 5555 has no ownership lease,
+so enabling ROS commands is an explicit operation and requires every other
+LeRobot command client to be stopped. Read-only observation does not compete
+for the motor bus or send zero commands.
+
+This bridge version deliberately has no lidar, external odometer, or IMU input.
+It does not launch SLAM, Nav2, or a state estimator. Host-measured body velocity
+is published directly; `/odom` and `odom -> base_link` are not published.
