@@ -16,7 +16,14 @@ from sensor_msgs.msg import JointState
 from std_msgs.msg import String
 from std_srvs.srv import SetBool
 
-from .protocol import BodyVelocity, JointMapper, ZmqHostTransport, wheel_velocity_from_body
+from .protocol import (
+    BodyVelocity,
+    CommandGate,
+    JointMapper,
+    ZmqHostTransport,
+    validate_state_observation,
+    wheel_velocity_from_body,
+)
 
 
 def clamp(value: float, limit: float) -> float:
@@ -73,20 +80,24 @@ class AlohaMiniLeRobotBridge(Node):
         self.command_timeout = float(self.get_parameter("command_timeout_sec").value)
         # Port 5555 has no lease protocol.  Never claim it at startup: a fresh
         # observation plus an explicit service call is required every run.
-        self.command_enabled = False
+        self.command_gate = CommandGate()
         self.base_frame = str(self.get_parameter("base_frame").value)
         self.wheel_radius = float(self.get_parameter("wheel_radius").value)
         self.base_radius = float(self.get_parameter("base_radius").value)
+        for name in ("linear_x_scale", "linear_y_scale", "angular_z_scale"):
+            value = float(self.get_parameter(name).value)
+            if not math.isfinite(value) or value == 0.0:
+                raise ValueError(f"{name} must be finite and non-zero")
 
         self.latest_observation: dict | None = None
         self.robot_metadata: dict | None = None
         self.last_observation_monotonic: float | None = None
-        self.last_command_monotonic = time.monotonic()
         self.request_expirations = 0
         self.malformed_responses = 0
+        self.invalid_observations = 0
+        self.last_observation_error = ""
         self.observation_count = 0
         self.command_count = 0
-        self.command = BodyVelocity()
         self.measured = BodyVelocity()
         self.wheel_positions = [0.0, 0.0, 0.0]
         self.last_integrate = time.monotonic()
@@ -94,11 +105,19 @@ class AlohaMiniLeRobotBridge(Node):
         self.joint_pub = self.create_publisher(
             JointState, str(self.get_parameter("joint_states_topic").value), 10
         )
+        self.measured_joint_pub = self.create_publisher(
+            JointState, "~/measured_joint_states", 10
+        )
+        self.derived_wheel_pub = self.create_publisher(
+            JointState, "~/derived_wheel_states", 10
+        )
         self.base_velocity_pub = self.create_publisher(
             TwistStamped, str(self.get_parameter("base_velocity_topic").value), 10
         )
         self.raw_pub = self.create_publisher(String, "~/state_json", 10)
-        self.diagnostics_pub = self.create_publisher(DiagnosticArray, "/diagnostics", 10)
+        self.diagnostics_pub = self.create_publisher(
+            DiagnosticArray, "/diagnostics", 10
+        )
         self.create_subscription(
             Twist, str(self.get_parameter("cmd_vel_topic").value), self.on_cmd_vel, 10
         )
@@ -123,38 +142,62 @@ class AlohaMiniLeRobotBridge(Node):
         return self.robot_metadata.get("robot_model") == self.expected_model
 
     def on_cmd_vel(self, message: Twist) -> None:
-        x = clamp(float(message.linear.x), float(self.get_parameter("max_linear_speed").value))
-        y = clamp(float(message.linear.y), float(self.get_parameter("max_lateral_speed").value))
-        yaw = clamp(float(message.angular.z), float(self.get_parameter("max_angular_speed").value))
+        if not self.command_gate.enabled:
+            return
+        raw_values = (message.linear.x, message.linear.y, message.angular.z)
+        if any(not math.isfinite(float(value)) for value in raw_values):
+            self.get_logger().warning("Rejected non-finite /cmd_vel")
+            return
+        x = clamp(
+            float(message.linear.x), float(self.get_parameter("max_linear_speed").value)
+        )
+        y = clamp(
+            float(message.linear.y),
+            float(self.get_parameter("max_lateral_speed").value),
+        )
+        yaw = clamp(
+            float(message.angular.z),
+            float(self.get_parameter("max_angular_speed").value),
+        )
         x *= float(self.get_parameter("linear_x_scale").value)
         y *= float(self.get_parameter("linear_y_scale").value)
         if bool(self.get_parameter("swap_xy").value):
             x, y = y, x
-        self.command = BodyVelocity(
-            x=x,
-            y=y,
-            yaw=yaw * float(self.get_parameter("angular_z_scale").value),
+        self.command_gate.accept(
+            BodyVelocity(
+                x=x,
+                y=y,
+                yaw=yaw * float(self.get_parameter("angular_z_scale").value),
+            )
         )
-        self.last_command_monotonic = time.monotonic()
 
     def on_command_enable(self, request: SetBool.Request, response: SetBool.Response):
         if request.data:
             if not self.observation_fresh():
                 response.success = False
-                response.message = "Cannot enable commands without a fresh Host observation"
+                response.message = (
+                    "Cannot enable commands without a fresh Host observation"
+                )
                 return response
             if self.require_model_match and not self.model_matches():
                 response.success = False
-                response.message = "Host robot_model does not match expected_robot_model"
+                response.message = (
+                    "Host robot_model does not match expected_robot_model"
+                )
                 return response
-            self.command_enabled = True
-            self.last_command_monotonic = time.monotonic()
+            # Re-enabling is also an epoch boundary. Stop an already-started
+            # stream before discarding it, then wait for another new /cmd_vel.
+            if self.command_gate.disable():
+                self.transport.send_action(
+                    {"x.vel": 0.0, "y.vel": 0.0, "theta.vel": 0.0}
+                )
+            self.command_gate.enable()
             response.success = True
-            response.message = "ROS command channel enabled; do not run another 5555 command client"
+            response.message = (
+                "ROS command channel enabled but unarmed; a new /cmd_vel is required"
+            )
             return response
-        was_enabled = self.command_enabled
-        self.command_enabled = False
-        if was_enabled:
+        if self.command_gate.disable():
             self.transport.send_action({"x.vel": 0.0, "y.vel": 0.0, "theta.vel": 0.0})
         response.success = True
         response.message = "ROS command channel disabled"
@@ -171,20 +214,31 @@ class AlohaMiniLeRobotBridge(Node):
         self.send_command_if_enabled()
 
     def handle_observation(self, observation: dict) -> None:
-        metadata = observation.get("_robot_metadata")
-        if isinstance(metadata, dict):
-            self.robot_metadata = metadata
+        try:
+            metadata, positions, host_velocity = validate_state_observation(
+                observation, self.mapper
+            )
+        except (KeyError, TypeError, ValueError) as error:
+            self.invalid_observations += 1
+            error_text = str(error)
+            if error_text != self.last_observation_error:
+                self.get_logger().warning(f"Host observation rejected: {error_text}")
+            self.last_observation_error = error_text
+            return
+
+        self.robot_metadata = metadata
         self.latest_observation = observation
         self.last_observation_monotonic = time.monotonic()
         self.observation_count += 1
-        host_x = float(observation.get("x.vel", 0.0))
-        host_y = float(observation.get("y.vel", 0.0))
+        self.last_observation_error = ""
+        host_x = host_velocity.x
+        host_y = host_velocity.y
         if bool(self.get_parameter("swap_xy").value):
             host_x, host_y = host_y, host_x
         self.measured = BodyVelocity(
             x=host_x / float(self.get_parameter("linear_x_scale").value),
             y=host_y / float(self.get_parameter("linear_y_scale").value),
-            yaw=math.radians(float(observation.get("theta.vel", 0.0)))
+            yaw=math.radians(host_velocity.yaw)
             / float(self.get_parameter("angular_z_scale").value),
         )
         measured = TwistStamped()
@@ -194,20 +248,15 @@ class AlohaMiniLeRobotBridge(Node):
         measured.twist.linear.y = self.measured.y
         measured.twist.angular.z = self.measured.yaw
         self.base_velocity_pub.publish(measured)
-        self.raw_pub.publish(String(data=json.dumps(observation, separators=(",", ":"))))
-        if isinstance(self.robot_metadata, dict):
-            try:
-                positions = self.mapper.observation_to_joint_positions(
-                    observation, self.robot_metadata
-                )
-            except (KeyError, TypeError, ValueError) as error:
-                self.get_logger().warning(f"Joint state conversion rejected: {error}")
-                return
-            message = JointState()
-            message.header.stamp = self.get_clock().now().to_msg()
-            message.name = list(positions)
-            message.position = list(positions.values())
-            self.joint_pub.publish(message)
+        self.raw_pub.publish(
+            String(data=json.dumps(observation, separators=(",", ":")))
+        )
+        message = JointState()
+        message.header.stamp = self.get_clock().now().to_msg()
+        message.name = list(positions)
+        message.position = list(positions.values())
+        self.joint_pub.publish(message)
+        self.measured_joint_pub.publish(message)
 
     def publish_wheel_states(self) -> None:
         now_mono = time.monotonic()
@@ -222,19 +271,30 @@ class AlohaMiniLeRobotBridge(Node):
                 self.wheel_positions[index] += wheel_velocity * dt
             wheels = JointState()
             wheels.header.stamp = self.get_clock().now().to_msg()
-            wheels.name = ["wheel1_joint", "wheel2_joint", "wheel3_joint"]
-            wheels.position = list(self.wheel_positions)
-            wheels.velocity = list(wheel_velocities)
+            # The MoveIt description has a virtual planar root made from three
+            # ordinary URDF joints. This bridge has no odometry source, so keep
+            # that virtual root explicitly at zero to anchor root -> base_link.
+            # These values are model state, not measured hardware feedback.
+            wheels.name = [
+                "root_x_axis_joint",
+                "root_y_axis_joint",
+                "root_z_rotation_joint",
+                "wheel1_joint",
+                "wheel2_joint",
+                "wheel3_joint",
+            ]
+            wheels.position = [0.0, 0.0, 0.0, *self.wheel_positions]
+            wheels.velocity = [0.0, 0.0, 0.0, *wheel_velocities]
             self.joint_pub.publish(wheels)
+            self.derived_wheel_pub.publish(wheels)
 
     def send_command_if_enabled(self) -> None:
-        if not self.command_enabled:
-            return
         permitted = self.observation_fresh() and (
             self.model_matches() or not self.require_model_match
         )
-        fresh_command = time.monotonic() - self.last_command_monotonic <= self.command_timeout
-        command = self.command if permitted and fresh_command else BodyVelocity()
+        command = self.command_gate.resolve(permitted, self.command_timeout)
+        if command is None:
+            return
         if self.transport.send_action(
             {
                 "x.vel": command.x,
@@ -259,18 +319,34 @@ class AlohaMiniLeRobotBridge(Node):
         elif self.require_model_match and not self.model_matches():
             status.level = DiagnosticStatus.ERROR
             status.message = "Host robot model mismatch"
-        elif self.command_enabled:
+        elif self.command_gate.enabled:
             status.level = DiagnosticStatus.WARN
-            status.message = "ROS owns the 5555 command stream"
+            status.message = (
+                "ROS command channel enabled"
+                if self.command_gate.stream_started
+                else "ROS command channel enabled; waiting for a new /cmd_vel"
+            )
         else:
             status.level = DiagnosticStatus.OK
             status.message = "State bridge healthy; command stream disabled"
-        model = self.robot_metadata.get("robot_model", "unknown") if self.robot_metadata else "unknown"
+        model = (
+            self.robot_metadata.get("robot_model", "unknown")
+            if self.robot_metadata
+            else "unknown"
+        )
         status.values = [
             KeyValue(key="observation_age_sec", value=f"{age:.3f}"),
             KeyValue(key="host_robot_model", value=str(model)),
-            KeyValue(key="command_enabled", value=str(self.command_enabled).lower()),
+            KeyValue(
+                key="command_enabled", value=str(self.command_gate.enabled).lower()
+            ),
+            KeyValue(
+                key="command_stream_started",
+                value=str(self.command_gate.stream_started).lower(),
+            ),
             KeyValue(key="observation_count", value=str(self.observation_count)),
+            KeyValue(key="invalid_observations", value=str(self.invalid_observations)),
+            KeyValue(key="last_observation_error", value=self.last_observation_error),
             KeyValue(key="command_count", value=str(self.command_count)),
             KeyValue(key="pending_requests", value=str(len(self.transport.pending))),
             KeyValue(key="expired_requests", value=str(self.request_expirations)),
@@ -282,7 +358,7 @@ class AlohaMiniLeRobotBridge(Node):
         self.diagnostics_pub.publish(array)
 
     def destroy_node(self) -> None:
-        if self.command_enabled:
+        if self.command_gate.disable():
             self.transport.send_action({"x.vel": 0.0, "y.vel": 0.0, "theta.vel": 0.0})
         self.transport.close()
         super().destroy_node()

@@ -4,7 +4,7 @@ authority: alohamini_calibration
 
 hardware:
   encoder_tick_rad_direction: hardware_test_corrected
-  shoulder_pan_correction_source: moveit_m4_hardware_test_2026_08_11
+  shoulder_pan_correction_source: live_state_rviz_comparison_2026_08_13
   left_arm_mapping: inherits_single_measured_right_mapping
   gripper_mapping: provisional_not_calibrated
 

@@ -28,6 +28,53 @@ class BodyVelocity:
     yaw: float = 0.0
 
 
+class CommandGate:
+    """Latch commands only after an explicit enable boundary.
+
+    A command received while disabled is deliberately discarded.  Enabling
+    starts an empty command epoch, so no port-5555 frame is emitted until a
+    newer command arrives.
+    """
+
+    def __init__(self) -> None:
+        self.enabled = False
+        self.command: BodyVelocity | None = None
+        self.last_command_monotonic: float | None = None
+
+    @property
+    def stream_started(self) -> bool:
+        return self.command is not None and self.last_command_monotonic is not None
+
+    def enable(self) -> None:
+        self.enabled = True
+        self.command = None
+        self.last_command_monotonic = None
+
+    def accept(self, command: BodyVelocity, now: float | None = None) -> bool:
+        if not self.enabled:
+            return False
+        self.command = command
+        self.last_command_monotonic = time.monotonic() if now is None else now
+        return True
+
+    def resolve(
+        self, permitted: bool, timeout_sec: float, now: float | None = None
+    ) -> BodyVelocity | None:
+        if not self.enabled or not self.stream_started:
+            return None
+        now = time.monotonic() if now is None else now
+        if permitted and now - self.last_command_monotonic <= timeout_sec:
+            return self.command
+        return BodyVelocity()
+
+    def disable(self) -> bool:
+        should_stop = self.enabled and self.stream_started
+        self.enabled = False
+        self.command = None
+        self.last_command_monotonic = None
+        return should_stop
+
+
 def signed_tick_delta(tick: int, reference_tick: int, period: int) -> int:
     return int((int(tick) - int(reference_tick) + period // 2) % period - period // 2)
 
@@ -84,15 +131,73 @@ class JointMapper:
                 motor_name = f"arm_{side}_{joint}"
                 observation_key = f"{motor_name}.pos"
                 motor_metadata = motors.get(motor_name)
-                if observation_key not in observation or not isinstance(motor_metadata, dict):
+                if observation_key not in observation or not isinstance(
+                    motor_metadata, dict
+                ):
                     continue
-                tick = self.lerobot_to_tick(float(observation[observation_key]), motor_metadata)
+                tick = self.lerobot_to_tick(
+                    float(observation[observation_key]), motor_metadata
+                )
                 suffix = "wrist_yaw_joint" if joint == "wrist_yaw" else joint
                 urdf_name = f"{side}_{suffix}"
                 positions[urdf_name] = self.tick_to_urdf(joint, tick, urdf_name)
         if "lift_axis.height_mm" in observation:
-            positions["vertical_move"] = float(observation["lift_axis.height_mm"]) / 1000.0
+            positions["vertical_move"] = (
+                float(observation["lift_axis.height_mm"]) / 1000.0
+            )
         return positions
+
+
+def finite_number(value: Any, field: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(f"{field} must be a number")
+    result = float(value)
+    if not math.isfinite(result):
+        raise ValueError(f"{field} must be finite")
+    return result
+
+
+def validate_state_observation(
+    observation: dict[str, Any], mapper: JointMapper
+) -> tuple[dict[str, Any], dict[str, float], BodyVelocity]:
+    """Validate one complete Host ``:state`` observation before it becomes fresh."""
+    metadata = observation.get("_robot_metadata")
+    if not isinstance(metadata, dict):
+        raise ValueError("_robot_metadata must be an object")
+    if metadata.get("schema_version") != 1:
+        raise ValueError("_robot_metadata.schema_version must be 1")
+    if not isinstance(metadata.get("robot_model"), str) or not metadata["robot_model"]:
+        raise ValueError("_robot_metadata.robot_model must be a non-empty string")
+    motors = metadata.get("motors")
+    if not isinstance(motors, dict):
+        raise ValueError("_robot_metadata.motors must be an object")
+
+    velocity = BodyVelocity(
+        x=finite_number(observation.get("x.vel"), "x.vel"),
+        y=finite_number(observation.get("y.vel"), "y.vel"),
+        yaw=finite_number(observation.get("theta.vel"), "theta.vel"),
+    )
+
+    for motor_name, motor_metadata in motors.items():
+        if not motor_name.startswith(("arm_left_", "arm_right_")):
+            continue
+        if not isinstance(motor_metadata, dict):
+            raise ValueError(f"metadata for {motor_name} must be an object")
+        for field in ("normalization", "drive_mode", "range_min", "range_max"):
+            if field not in motor_metadata:
+                raise ValueError(f"metadata for {motor_name} lacks {field}")
+        key = f"{motor_name}.pos"
+        finite_number(observation.get(key), key)
+
+    if "lift_axis" in metadata:
+        if not isinstance(metadata["lift_axis"], dict):
+            raise ValueError("_robot_metadata.lift_axis must be an object")
+        finite_number(observation.get("lift_axis.height_mm"), "lift_axis.height_mm")
+
+    positions = mapper.observation_to_joint_positions(observation, metadata)
+    if any(not math.isfinite(value) for value in positions.values()):
+        raise ValueError("converted joint position must be finite")
+    return metadata, positions, velocity
 
 
 def wheel_velocity_from_body(
@@ -165,23 +270,31 @@ class ZmqHostTransport:
                 parts = self.observation.recv_multipart(flags=zmq.NOBLOCK)
             except zmq.Again:
                 break
-            if len(parts) < 2:
+            # A :state response is exactly [request_token, state_json].  Camera
+            # name/JPEG pairs are a protocol violation on this socket path.
+            if len(parts) != 2:
                 malformed += 1
                 continue
             token = parts[0]
             matching_index = next(
-                (index for index, (candidate, _) in enumerate(self.pending) if candidate == token),
+                (
+                    index
+                    for index, (candidate, _) in enumerate(self.pending)
+                    if candidate == token
+                ),
                 None,
             )
-            if matching_index is not None:
-                for _ in range(matching_index + 1):
-                    self.pending.popleft()
+            if matching_index is None:
+                malformed += 1
+                continue
+            for _ in range(matching_index + 1):
+                self.pending.popleft()
             try:
                 decoded = json.loads(parts[1].decode("utf-8"))
             except (UnicodeDecodeError, json.JSONDecodeError):
                 malformed += 1
                 continue
-            if isinstance(decoded, dict):
+            if isinstance(decoded, dict) and decoded.get("_images") == []:
                 latest = decoded
             else:
                 malformed += 1
@@ -189,7 +302,9 @@ class ZmqHostTransport:
 
     def send_action(self, action: dict[str, float]) -> bool:
         try:
-            self.command.send_string(json.dumps(action, separators=(",", ":")), flags=zmq.NOBLOCK)
+            self.command.send_string(
+                json.dumps(action, separators=(",", ":")), flags=zmq.NOBLOCK
+            )
             return True
         except zmq.Again:
             return False

@@ -7,7 +7,7 @@ from launch_ros.actions import Node
 
 def generate_launch_description():
     package_share = Path(get_package_share_directory("alohamini_description"))
-    model = package_share / "urdf" / "alohamini2pro_kinematic.urdf"
+    model = package_share / "urdf" / "alohamini2pro_moveit.urdf"
     robot_description = model.read_text(encoding="utf-8")
 
     return LaunchDescription(

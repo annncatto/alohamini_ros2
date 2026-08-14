@@ -9,20 +9,19 @@ joints:
     zero_tick: null
     reference_tick: 2027
     reference_q_rad: 0.0
-    sign: -1
+    sign: 1
     positive_direction_sample_tick: null
     positive_direction_delta_tick: null
-    safe_min_tick: 3418
-    safe_q_min_rad: -2.133767275948927
-    safe_max_tick: 567
-    safe_q_max_rad: 2.2396119503130363
+    safe_min_tick: 567
+    safe_q_min_rad: -2.2396119503130363
+    safe_max_tick: 3418
+    safe_q_max_rad: 2.133767275948927
     direction_validation:
-      status: corrected_from_moveit_m4_hardware_test
-      date: "2026-08-11"
-      observed: A positive URDF shoulder_pan command increased raw ticks but moved opposite to the URDF positive direction.
-      required_raw_direction_for_positive_q: decreasing_ticks
-      invalidated_sample_tick: 2272
-      invalidated_sample_delta_tick: 245
+      status: corrected_from_live_state_rviz_comparison
+      date: "2026-08-13"
+      observed: Both physical shoulder_pan joints rotated opposite to their URDF visualization when live Host observations used sign -1.
+      required_raw_direction_for_positive_q: increasing_ticks
+      supersedes: moveit_m4_hardware_test_2026_08_11
   shoulder_lift:
     id: 2
     model: sts3095

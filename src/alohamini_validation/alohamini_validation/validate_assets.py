@@ -216,7 +216,7 @@ def validate_mapping(calibration: Path, description: Path, validation: Path) -> 
         for side in ("left", "right"):
             axis = np.fromstring(urdf_joints[f"{side}_{suffix}"].find("axis").get("xyz"), sep=" ")
             assert np.array_equal(axis, np.asarray(expected["urdf_axis_xyz"], dtype=float))
-    assert int(right["joints"]["shoulder_pan"]["sign"]) == -1
+    assert int(right["joints"]["shoulder_pan"]["sign"]) == 1
 
 
 def resolve_package_uri(uri: str, description: Path) -> Path:
