@@ -191,6 +191,7 @@ def validate_fk(model: UrdfKinematics, description: Path, validation: Path) -> N
 def validate_mapping(calibration: Path, description: Path, validation: Path) -> None:
     right = load_yaml(calibration / "config/hardware/hardware_joint_map_right.yaml")
     left = load_yaml(calibration / "config/hardware/hardware_joint_map_left.yaml")
+    lift = load_yaml(calibration / "config/hardware/lift_axis.yaml")
     assert left["inherits"] == "hardware_joint_map_right.yaml"
     assert left["calibration_source_side"] == "right"
     period = int(right["ticks_per_revolution"])
@@ -198,6 +199,18 @@ def validate_mapping(calibration: Path, description: Path, validation: Path) -> 
     direction_reference = load_yaml(validation / "config/joint_direction_reference.yaml")["joint_state_gui"]
     urdf = ET.parse(description / "urdf/alohamini2pro_kinematic.urdf").getroot()
     urdf_joints = {joint.get("name"): joint for joint in urdf.findall("joint")}
+    exported_urdfs = {
+        path.name: {
+            joint.get("name"): joint
+            for joint in ET.parse(path).getroot().findall("joint")
+        }
+        for path in (
+            description / "urdf/alohamini2pro_left_kinematic.urdf",
+            description / "urdf/alohamini2pro_right_kinematic.urdf",
+            description / "urdf/alohamini2pro_kinematic.urdf",
+            description / "urdf/alohamini2pro_moveit.urdf",
+        )
+    }
     for name, entry in right["joints"].items():
         reference_q = float(entry["reference_q_rad"])
         assert math.isclose(tick_to_rad(entry, int(entry["reference_tick"]), period), reference_q)
@@ -216,7 +229,24 @@ def validate_mapping(calibration: Path, description: Path, validation: Path) -> 
         for side in ("left", "right"):
             axis = np.fromstring(urdf_joints[f"{side}_{suffix}"].find("axis").get("xyz"), sep=" ")
             assert np.array_equal(axis, np.asarray(expected["urdf_axis_xyz"], dtype=float))
+            joint_name = f"{side}_{suffix}"
+            for filename, joints in exported_urdfs.items():
+                if joint_name not in joints:
+                    continue
+                limit = joints[joint_name].find("limit")
+                assert math.isclose(float(limit.get("lower")), lower, abs_tol=1e-11), (
+                    f"{filename}/{joint_name} lower limit drift"
+                )
+                assert math.isclose(float(limit.get("upper")), upper, abs_tol=1e-11), (
+                    f"{filename}/{joint_name} upper limit drift"
+                )
     assert int(right["joints"]["shoulder_pan"]["sign"]) == 1
+    assert int(right["joints"]["wrist_yaw"]["reference_tick"]) == 2047
+    assert float(lift["mechanism"]["physical_min_mm"]) == 0.0
+    assert float(lift["mechanism"]["physical_max_mm"]) == 600.0
+    assert float(lift["urdf"]["q_at_physical_min_m"]) == -0.3
+    assert float(lift["urdf"]["q_at_physical_max_m"]) == 0.3
+    assert float(lift["mechanism"]["fitted_lead_error_percent"]) < 1.0
 
 
 def resolve_package_uri(uri: str, description: Path) -> Path:

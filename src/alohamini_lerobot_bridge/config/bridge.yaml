@@ -8,6 +8,9 @@ alohamini_lerobot_bridge:
     observation_timeout_sec: 0.5
     request_timeout_sec: 1.0
     command_timeout_sec: 0.5
+    trajectory_hold_sec: 0.25
+    arm_tracking_error_rad: 0.35
+    lift_tracking_error_m: 0.03
     expected_robot_model: alohamini2pro
     require_model_match: true
     cmd_vel_topic: /cmd_vel

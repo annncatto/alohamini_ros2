@@ -1,0 +1,226 @@
+#!/usr/bin/python3
+"""Read-only lift-axis calibration against the LeRobot Host state endpoint."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import math
+import statistics
+import sys
+import time
+from datetime import datetime, timezone
+from pathlib import Path
+
+import yaml
+import zmq
+
+
+REQUIRED_STATE_FIELDS = (
+    "lift_axis.height_mm",
+    "lift_axis.raw_tick",
+    "lift_axis.extended_ticks",
+    "lift_axis.zero_extended_ticks",
+    "lift_axis.homed",
+    "_robot_metadata",
+)
+
+
+def finite_float(value, name: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(f"{name} must be numeric")
+    result = float(value)
+    if not math.isfinite(result):
+        raise ValueError(f"{name} must be finite")
+    return result
+
+
+def fit_calibration(
+    samples: list[dict], ticks_per_revolution: int, urdf_q_at_home_m: float
+) -> dict:
+    if len(samples) < 2:
+        raise ValueError("at least two physical-height samples are required")
+    x = [finite_float(sample["extended_ticks"], "extended_ticks") for sample in samples]
+    y = [finite_float(sample["physical_height_mm"], "physical_height_mm") for sample in samples]
+    x_mean = statistics.fmean(x)
+    y_mean = statistics.fmean(y)
+    denominator = sum((value - x_mean) ** 2 for value in x)
+    if denominator < 1.0:
+        raise ValueError("encoder samples do not span enough motion")
+    mm_per_tick = sum(
+        (tick - x_mean) * (height - y_mean) for tick, height in zip(x, y, strict=True)
+    ) / denominator
+    intercept_mm = y_mean - mm_per_tick * x_mean
+    residuals = [
+        height - (mm_per_tick * tick + intercept_mm)
+        for tick, height in zip(x, y, strict=True)
+    ]
+    rms_error_mm = math.sqrt(statistics.fmean(value * value for value in residuals))
+    home = min(samples, key=lambda sample: abs(float(sample["physical_height_mm"])))
+    return {
+        "encoder_direction_sign": 1 if mm_per_tick > 0.0 else -1,
+        "mm_per_tick": mm_per_tick,
+        "measured_lead_mm_per_revolution": abs(mm_per_tick) * ticks_per_revolution,
+        "height_intercept_mm": intercept_mm,
+        "rms_fit_error_mm": rms_error_mm,
+        "home_raw_tick": int(home["raw_tick"]),
+        "home_extended_ticks": float(home["extended_ticks"]),
+        "urdf_q_at_home_m": urdf_q_at_home_m,
+        "urdf_m_per_tick": mm_per_tick / 1000.0,
+    }
+
+
+class StateClient:
+    def __init__(self, host: str, port: int, timeout_sec: float) -> None:
+        self.context = zmq.Context()
+        self.socket = self.context.socket(zmq.DEALER)
+        self.socket.setsockopt(zmq.LINGER, 0)
+        self.socket.connect(f"tcp://{host}:{port}")
+        self.timeout_ms = max(1, int(timeout_sec * 1000.0))
+        self.sequence = 0
+
+    def receive(self) -> dict:
+        self.sequence += 1
+        token = f"lift-cal-{self.sequence}:state".encode("ascii")
+        self.socket.send(token)
+        if not self.socket.poll(self.timeout_ms, zmq.POLLIN):
+            raise TimeoutError("timed out waiting for Host :state response")
+        parts = self.socket.recv_multipart()
+        if len(parts) != 2 or parts[0] != token:
+            raise ValueError("Host :state response must be [matching token, JSON]")
+        observation = json.loads(parts[1].decode("utf-8"))
+        if not isinstance(observation, dict) or observation.get("_images") != []:
+            raise ValueError("Host returned an invalid state-only observation")
+        missing = [field for field in REQUIRED_STATE_FIELDS if field not in observation]
+        if missing:
+            raise ValueError(
+                f"Host lacks lift calibration fields {missing}; sync the updated Host first"
+            )
+        if observation["lift_axis.homed"] is not True:
+            raise ValueError("Host reports lift_axis.homed=false")
+        return observation
+
+    def close(self) -> None:
+        self.socket.close(linger=0)
+        self.context.term()
+
+
+def capture_point(client: StateClient, physical_height_mm: float, count: int) -> dict:
+    observations = []
+    for _ in range(count):
+        observations.append(client.receive())
+        time.sleep(0.04)
+    return {
+        "physical_height_mm": physical_height_mm,
+        "raw_tick": int(round(statistics.median(obs["lift_axis.raw_tick"] for obs in observations))),
+        "extended_ticks": statistics.median(
+            finite_float(obs["lift_axis.extended_ticks"], "lift_axis.extended_ticks")
+            for obs in observations
+        ),
+        "host_height_mm": statistics.median(
+            finite_float(obs["lift_axis.height_mm"], "lift_axis.height_mm")
+            for obs in observations
+        ),
+    }
+
+
+def build_document(samples: list[dict], observation: dict, args) -> dict:
+    metadata = observation["_robot_metadata"]
+    lift_metadata = metadata.get("lift_axis")
+    if not isinstance(lift_metadata, dict):
+        raise ValueError("Host metadata lacks lift_axis configuration")
+    ticks = int(lift_metadata["ticks_per_revolution"])
+    fit = fit_calibration(samples, ticks, args.urdf_q_at_home_m)
+    configured_lead = finite_float(
+        lift_metadata["lead_mm_per_revolution"], "lead_mm_per_revolution"
+    )
+    fit["configured_lead_mm_per_revolution"] = configured_lead
+    fit["lead_error_percent"] = (
+        100.0 * (fit["measured_lead_mm_per_revolution"] - configured_lead) / configured_lead
+    )
+    return {
+        "schema_version": 1,
+        "status": "candidate_requires_review",
+        "robot_model": metadata.get("robot_model", "unknown"),
+        "captured_at": datetime.now(timezone.utc).isoformat(),
+        "source": {
+            "transport": "lerobot_host_zmq_state_only",
+            "host": args.host,
+            "observation_port": args.port,
+            "command_port_used": False,
+        },
+        "mechanism": {
+            "ticks_per_revolution": ticks,
+            "output_gear_ratio": lift_metadata.get("output_gear_ratio"),
+            "host_direction_sign": lift_metadata.get("direction_sign"),
+            "soft_min_mm": lift_metadata.get("soft_min_mm"),
+            "soft_max_mm": lift_metadata.get("soft_max_mm"),
+        },
+        "fit": fit,
+        "urdf": {
+            "joint": "vertical_move",
+            "lower_m": -0.3,
+            "upper_m": 0.3,
+            "mapping": "q_m = urdf_q_at_home_m + physical_height_mm / 1000",
+        },
+        "samples": samples,
+    }
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description="Capture lift encoder/height calibration without using the command port."
+    )
+    parser.add_argument("--host", required=True, help="LeRobot Host IP or hostname")
+    parser.add_argument("--port", type=int, default=5556, help="Host observation port")
+    parser.add_argument("--timeout-sec", type=float, default=2.0)
+    parser.add_argument("--samples-per-point", type=int, default=10)
+    parser.add_argument("--urdf-q-at-home-m", type=float, default=-0.3)
+    parser.add_argument("--output", type=Path, help="Candidate YAML output path; stdout if omitted")
+    return parser.parse_args()
+
+
+def main() -> int:
+    args = parse_args()
+    if args.samples_per_point < 1:
+        raise ValueError("--samples-per-point must be positive")
+    client = StateClient(args.host, args.port, args.timeout_sec)
+    try:
+        first = client.receive()
+        print(
+            "Read-only calibration: port 5555 is not opened. "
+            "Use a separate existing controller to position the lift.",
+            file=sys.stderr,
+        )
+        input("Confirm the lift is at the homed mechanical lower stop, then press Enter: ")
+        samples = [capture_point(client, 0.0, args.samples_per_point)]
+        while True:
+            text = input(
+                "Move the lift, measure physical height above home in mm, "
+                "then enter it (blank to finish): "
+            ).strip()
+            if not text:
+                break
+            height = finite_float(float(text), "physical_height_mm")
+            sample = capture_point(client, height, args.samples_per_point)
+            samples.append(sample)
+            print(
+                f"captured height={height:.3f} mm raw={sample['raw_tick']} "
+                f"extended={sample['extended_ticks']:.3f}",
+                file=sys.stderr,
+            )
+        document = build_document(samples, first, args)
+        output = yaml.safe_dump(document, sort_keys=False, allow_unicode=True)
+        if args.output is None:
+            print(output)
+        else:
+            args.output.parent.mkdir(parents=True, exist_ok=True)
+            args.output.write_text(output, encoding="utf-8")
+            print(f"Wrote candidate calibration to {args.output}", file=sys.stderr)
+        return 0
+    finally:
+        client.close()
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

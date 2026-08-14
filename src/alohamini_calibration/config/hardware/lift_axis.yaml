@@ -1,0 +1,42 @@
+schema_version: 1
+status: accepted_for_ros_visualization
+robot_model: alohamini2pro
+accepted_at: "2026-08-14"
+
+source:
+  transport: lerobot_host_zmq_state_only
+  host: 192.168.3.48
+  observation_port: 5556
+  command_port_used: false
+  homing_reference: mechanical_lower_stop
+  upper_reference: mechanical_upper_stop
+
+encoder:
+  ticks_per_revolution: 4096
+  direction_sign: -1
+  home_raw_tick: 3232
+  home_extended_ticks_at_capture: -25.0
+
+mechanism:
+  configured_lead_mm_per_revolution: 131.0
+  fitted_lead_mm_per_revolution: 131.4756608328797
+  fitted_lead_error_percent: 0.3630998724272498
+  fit_rms_error_mm: 7.055547746856805
+  output_gear_ratio: 1.0
+  physical_min_mm: 0.0
+  physical_max_mm: 600.0
+  note: Keep the configured 131 mm/rev runtime conversion; the physical endpoint mapping is authoritative for ROS visualization.
+
+urdf:
+  joint: vertical_move
+  q_at_physical_min_m: -0.3
+  q_at_physical_max_m: 0.3
+  clamp_to_physical_range: true
+  mapping: q = q_min + (height_mm - physical_min_mm) * (q_max - q_min) / (physical_max_mm - physical_min_mm)
+
+samples:
+  - {physical_height_mm: 0.0, raw_tick: 3232, extended_ticks: -25.0, host_height_mm: 0.255859375}
+  - {physical_height_mm: 100.0, raw_tick: 3737, extended_ticks: -3616.0, host_height_mm: 115.104736328125}
+  - {physical_height_mm: 300.0, raw_tick: 1500, extended_ticks: -9949.0, host_height_mm: 317.6494140625}
+  - {physical_height_mm: 500.0, raw_tick: 3942, extended_ticks: -15699.0, host_height_mm: 501.54833984375}
+  - {physical_height_mm: 600.0, raw_tick: 697, extended_ticks: -18944.0, host_height_mm: 605.331298828125}

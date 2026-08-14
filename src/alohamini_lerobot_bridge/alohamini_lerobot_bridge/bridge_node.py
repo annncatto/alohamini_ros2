@@ -3,22 +3,28 @@ from __future__ import annotations
 import json
 import math
 import time
+from functools import partial
 from pathlib import Path
 
 import rclpy
 import yaml
 from ament_index_python.packages import get_package_share_directory
+from control_msgs.action import FollowJointTrajectory
 from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus, KeyValue
 from geometry_msgs.msg import Twist, TwistStamped
-from rclpy.executors import ExternalShutdownException
+from rclpy.action import ActionServer, CancelResponse, GoalResponse
+from rclpy.callback_groups import ReentrantCallbackGroup
+from rclpy.executors import ExternalShutdownException, MultiThreadedExecutor
 from rclpy.node import Node
 from sensor_msgs.msg import JointState
 from std_msgs.msg import String
 from std_srvs.srv import SetBool
+from trajectory_msgs.msg import JointTrajectoryPoint
+
+from .control import CommandComposer, TerminalState, TrajectorySample
 
 from .protocol import (
     BodyVelocity,
-    CommandGate,
     JointMapper,
     ZmqHostTransport,
     validate_state_observation,
@@ -42,6 +48,9 @@ class AlohaMiniLeRobotBridge(Node):
             "observation_timeout_sec": 0.5,
             "request_timeout_sec": 1.0,
             "command_timeout_sec": 0.5,
+            "trajectory_hold_sec": 0.25,
+            "arm_tracking_error_rad": 0.35,
+            "lift_tracking_error_m": 0.03,
             "expected_robot_model": "alohamini2pro",
             "require_model_match": True,
             "cmd_vel_topic": "/cmd_vel",
@@ -65,7 +74,12 @@ class AlohaMiniLeRobotBridge(Node):
         with (calibration_share / "config/hardware/hardware_joint_map_right.yaml").open(
             encoding="utf-8"
         ) as stream:
-            self.mapper = JointMapper(yaml.safe_load(stream))
+            joint_calibration = yaml.safe_load(stream)
+        with (calibration_share / "config/hardware/lift_axis.yaml").open(
+            encoding="utf-8"
+        ) as stream:
+            lift_calibration = yaml.safe_load(stream)
+        self.mapper = JointMapper(joint_calibration, lift_calibration)
 
         self.transport = ZmqHostTransport(
             str(self.get_parameter("host").value),
@@ -80,7 +94,14 @@ class AlohaMiniLeRobotBridge(Node):
         self.command_timeout = float(self.get_parameter("command_timeout_sec").value)
         # Port 5555 has no lease protocol.  Never claim it at startup: a fresh
         # observation plus an explicit service call is required every run.
-        self.command_gate = CommandGate()
+        self.composer = CommandComposer(
+            self.mapper,
+            self.command_timeout,
+            float(self.get_parameter("arm_tracking_error_rad").value),
+            float(self.get_parameter("lift_tracking_error_m").value),
+            float(self.get_parameter("trajectory_hold_sec").value),
+        )
+        self.command_gate = self.composer.base
         self.base_frame = str(self.get_parameter("base_frame").value)
         self.wheel_radius = float(self.get_parameter("wheel_radius").value)
         self.base_radius = float(self.get_parameter("base_radius").value)
@@ -90,6 +111,7 @@ class AlohaMiniLeRobotBridge(Node):
                 raise ValueError(f"{name} must be finite and non-zero")
 
         self.latest_observation: dict | None = None
+        self.latest_positions: dict[str, float] = {}
         self.robot_metadata: dict | None = None
         self.last_observation_monotonic: float | None = None
         self.request_expirations = 0
@@ -122,6 +144,26 @@ class AlohaMiniLeRobotBridge(Node):
             Twist, str(self.get_parameter("cmd_vel_topic").value), self.on_cmd_vel, 10
         )
         self.create_service(SetBool, "~/command_enable", self.on_command_enable)
+        self.action_callback_group = ReentrantCallbackGroup()
+        self.action_servers = []
+        for resource, action_name in (
+            ("left_arm", "/left_arm_controller/follow_joint_trajectory"),
+            ("right_arm", "/right_arm_controller/follow_joint_trajectory"),
+            ("lift", "/lift_controller/follow_joint_trajectory"),
+        ):
+            self.action_servers.append(
+                ActionServer(
+                    self,
+                    FollowJointTrajectory,
+                    action_name,
+                    execute_callback=partial(
+                        self.execute_trajectory, resource=resource
+                    ),
+                    goal_callback=partial(self.on_trajectory_goal, resource=resource),
+                    cancel_callback=self.on_trajectory_cancel,
+                    callback_group=self.action_callback_group,
+                )
+            )
         rate = max(1.0, float(self.get_parameter("rate_hz").value))
         self.timer = self.create_timer(1.0 / rate, self.on_timer)
         self.diagnostic_timer = self.create_timer(1.0, self.publish_diagnostics)
@@ -163,7 +205,7 @@ class AlohaMiniLeRobotBridge(Node):
         y *= float(self.get_parameter("linear_y_scale").value)
         if bool(self.get_parameter("swap_xy").value):
             x, y = y, x
-        self.command_gate.accept(
+        self.composer.accept_base(
             BodyVelocity(
                 x=x,
                 y=y,
@@ -187,17 +229,18 @@ class AlohaMiniLeRobotBridge(Node):
                 return response
             # Re-enabling is also an epoch boundary. Stop an already-started
             # stream before discarding it, then wait for another new /cmd_vel.
-            if self.command_gate.disable():
+            if self.composer.disable():
                 self.transport.send_action(
                     {"x.vel": 0.0, "y.vel": 0.0, "theta.vel": 0.0}
                 )
-            self.command_gate.enable()
+            self.composer.enable()
             response.success = True
             response.message = (
-                "ROS command channel enabled but unarmed; a new /cmd_vel is required"
+                "ROS command channel enabled; every control resource remains unarmed "
+                "until it receives a new command"
             )
             return response
-        if self.command_gate.disable():
+        if self.composer.disable():
             self.transport.send_action({"x.vel": 0.0, "y.vel": 0.0, "theta.vel": 0.0})
         response.success = True
         response.message = "ROS command channel disabled"
@@ -228,6 +271,7 @@ class AlohaMiniLeRobotBridge(Node):
 
         self.robot_metadata = metadata
         self.latest_observation = observation
+        self.latest_positions = positions
         self.last_observation_monotonic = time.monotonic()
         self.observation_count += 1
         self.last_observation_error = ""
@@ -292,17 +336,151 @@ class AlohaMiniLeRobotBridge(Node):
         permitted = self.observation_fresh() and (
             self.model_matches() or not self.require_model_match
         )
-        command = self.command_gate.resolve(permitted, self.command_timeout)
-        if command is None:
+        action = self.composer.compose(
+            self.latest_positions,
+            self.robot_metadata or {},
+            permitted,
+        )
+        if action is None:
             return
-        if self.transport.send_action(
-            {
-                "x.vel": command.x,
-                "y.vel": command.y,
-                "theta.vel": math.degrees(command.yaw),
-            }
-        ):
+        if self.transport.send_action(action):
             self.command_count += 1
+
+    @staticmethod
+    def trajectory_samples(goal) -> tuple[TrajectorySample, ...]:
+        names = tuple(goal.trajectory.joint_names)
+        samples = []
+        for point in goal.trajectory.points:
+            if len(point.positions) != len(names):
+                raise ValueError(
+                    "trajectory point position count does not match joint_names"
+                )
+            duration = point.time_from_start
+            samples.append(
+                TrajectorySample(
+                    float(duration.sec) + float(duration.nanosec) * 1e-9,
+                    dict(zip(names, (float(value) for value in point.positions))),
+                )
+            )
+        return tuple(samples)
+
+    def validate_trajectory_for_host(self, resource: str, goal) -> None:
+        samples = self.trajectory_samples(goal)
+        controller = self.composer.resources[resource]
+        controller.validate(goal.trajectory.joint_names, samples)
+        metadata = self.robot_metadata or {}
+        for sample in samples:
+            for joint, position in sample.positions.items():
+                if resource == "lift":
+                    self.mapper.lift_urdf_to_height(position)
+                else:
+                    self.mapper.urdf_to_lerobot(joint, position, metadata)
+        # Activation commands the complete resource. Joints omitted by a goal
+        # are latched from this fresh measured state, never filled with zero.
+        for joint in controller.joints:
+            if joint not in self.latest_positions:
+                raise ValueError(f"fresh measured state lacks {joint}")
+            if resource == "lift":
+                self.mapper.lift_urdf_to_height(self.latest_positions[joint])
+            else:
+                self.mapper.urdf_to_lerobot(
+                    joint, self.latest_positions[joint], metadata
+                )
+
+    def on_trajectory_goal(self, goal, resource: str) -> GoalResponse:
+        if not self.composer.enabled:
+            self.get_logger().warning(f"Rejected {resource} goal: commands are disabled")
+            return GoalResponse.REJECT
+        if not self.observation_fresh():
+            self.get_logger().warning(f"Rejected {resource} goal: observation is stale")
+            return GoalResponse.REJECT
+        if self.require_model_match and not self.model_matches():
+            self.get_logger().warning(f"Rejected {resource} goal: robot model mismatch")
+            return GoalResponse.REJECT
+        try:
+            self.validate_trajectory_for_host(resource, goal)
+        except (KeyError, TypeError, ValueError) as error:
+            self.get_logger().warning(f"Rejected {resource} goal: {error}")
+            return GoalResponse.REJECT
+        return GoalResponse.ACCEPT
+
+    @staticmethod
+    def on_trajectory_cancel(_goal_handle) -> CancelResponse:
+        return CancelResponse.ACCEPT
+
+    def trajectory_feedback(self, resource: str) -> FollowJointTrajectory.Feedback:
+        controller = self.composer.resources[resource]
+        feedback = FollowJointTrajectory.Feedback()
+        feedback.header.stamp = self.get_clock().now().to_msg()
+        feedback.joint_names = list(controller.joints)
+        desired = controller.desired or self.latest_positions
+        feedback.desired = JointTrajectoryPoint(
+            positions=[float(desired[joint]) for joint in controller.joints]
+        )
+        feedback.actual = JointTrajectoryPoint(
+            positions=[
+                float(self.latest_positions[joint]) for joint in controller.joints
+            ]
+        )
+        feedback.error = JointTrajectoryPoint(
+            positions=[
+                feedback.desired.positions[index] - feedback.actual.positions[index]
+                for index in range(len(controller.joints))
+            ]
+        )
+        return feedback
+
+    def execute_trajectory(self, goal_handle, resource: str):
+        result = FollowJointTrajectory.Result()
+        try:
+            samples = self.trajectory_samples(goal_handle.request)
+            goal_id = self.composer.start_trajectory(
+                resource,
+                goal_handle.request.trajectory.joint_names,
+                samples,
+                self.latest_positions,
+                self.observation_fresh(),
+            )
+        except (KeyError, TypeError, ValueError) as error:
+            goal_handle.abort()
+            result.error_code = FollowJointTrajectory.Result.INVALID_GOAL
+            result.error_string = str(error)
+            return result
+
+        controller = self.composer.resources[resource]
+        while rclpy.ok():
+            if goal_handle.is_cancel_requested:
+                self.composer.cancel_trajectory(
+                    resource,
+                    goal_id,
+                    self.latest_positions,
+                    self.observation_fresh(),
+                )
+            event = controller.terminal(goal_id)
+            if event is not None:
+                result.error_string = event.message
+                if event.state is TerminalState.SUCCEEDED:
+                    goal_handle.succeed()
+                    result.error_code = FollowJointTrajectory.Result.SUCCESSFUL
+                elif event.state is TerminalState.CANCELED:
+                    goal_handle.canceled()
+                    result.error_code = FollowJointTrajectory.Result.SUCCESSFUL
+                else:
+                    goal_handle.abort()
+                    result.error_code = (
+                        FollowJointTrajectory.Result.PATH_TOLERANCE_VIOLATED
+                        if event.state in (TerminalState.ABORTED, TerminalState.STALE)
+                        else FollowJointTrajectory.Result.INVALID_GOAL
+                    )
+                return result
+            if self.observation_fresh():
+                goal_handle.publish_feedback(self.trajectory_feedback(resource))
+            time.sleep(0.02)
+
+        goal_handle.abort()
+        result.error_code = FollowJointTrajectory.Result.INVALID_GOAL
+        result.error_string = "ROS shutdown"
+        return result
 
     def publish_diagnostics(self) -> None:
         age = (
@@ -319,13 +497,9 @@ class AlohaMiniLeRobotBridge(Node):
         elif self.require_model_match and not self.model_matches():
             status.level = DiagnosticStatus.ERROR
             status.message = "Host robot model mismatch"
-        elif self.command_gate.enabled:
+        elif self.composer.enabled:
             status.level = DiagnosticStatus.WARN
-            status.message = (
-                "ROS command channel enabled"
-                if self.command_gate.stream_started
-                else "ROS command channel enabled; waiting for a new /cmd_vel"
-            )
+            status.message = "ROS command channel enabled"
         else:
             status.level = DiagnosticStatus.OK
             status.message = "State bridge healthy; command stream disabled"
@@ -338,12 +512,19 @@ class AlohaMiniLeRobotBridge(Node):
             KeyValue(key="observation_age_sec", value=f"{age:.3f}"),
             KeyValue(key="host_robot_model", value=str(model)),
             KeyValue(
-                key="command_enabled", value=str(self.command_gate.enabled).lower()
+                key="command_enabled", value=str(self.composer.enabled).lower()
             ),
             KeyValue(
                 key="command_stream_started",
-                value=str(self.command_gate.stream_started).lower(),
+                value=str(self.composer.ever_commanded).lower(),
             ),
+            *[
+                KeyValue(
+                    key=f"resource_{name}_active",
+                    value=str(resource.active).lower(),
+                )
+                for name, resource in self.composer.resources.items()
+            ],
             KeyValue(key="observation_count", value=str(self.observation_count)),
             KeyValue(key="invalid_observations", value=str(self.invalid_observations)),
             KeyValue(key="last_observation_error", value=self.last_observation_error),
@@ -358,8 +539,10 @@ class AlohaMiniLeRobotBridge(Node):
         self.diagnostics_pub.publish(array)
 
     def destroy_node(self) -> None:
-        if self.command_gate.disable():
+        if self.composer.disable():
             self.transport.send_action({"x.vel": 0.0, "y.vel": 0.0, "theta.vel": 0.0})
+        for server in self.action_servers:
+            server.destroy()
         self.transport.close()
         super().destroy_node()
 
@@ -367,11 +550,15 @@ class AlohaMiniLeRobotBridge(Node):
 def main(args=None) -> None:
     rclpy.init(args=args)
     node = AlohaMiniLeRobotBridge()
+    executor = MultiThreadedExecutor(num_threads=4)
+    executor.add_node(node)
     try:
-        rclpy.spin(node)
+        executor.spin()
     except (KeyboardInterrupt, ExternalShutdownException):
         pass
     finally:
+        executor.remove_node(node)
+        executor.shutdown()
         node.destroy_node()
         if rclpy.ok():
             rclpy.shutdown()

@@ -5,6 +5,7 @@ moveit_simple_controller_manager:
   controller_names:
     - left_arm_controller
     - right_arm_controller
+    - lift_controller
 
   left_arm_controller:
     type: FollowJointTrajectory
@@ -29,6 +30,13 @@ moveit_simple_controller_manager:
       - right_wrist_flex
       - right_wrist_yaw_joint
       - right_wrist_roll
+
+  lift_controller:
+    type: FollowJointTrajectory
+    action_ns: follow_joint_trajectory
+    default: false
+    joints:
+      - vertical_move
 
 trajectory_execution.allowed_execution_duration_scaling: 1.2
 trajectory_execution.allowed_goal_duration_margin: 0.5

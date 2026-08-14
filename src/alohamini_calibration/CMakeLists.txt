@@ -8,5 +8,14 @@ install(
   DESTINATION share/${PROJECT_NAME}
 )
 
-ament_package()
+install(
+  PROGRAMS scripts/calibrate_lift_axis
+  DESTINATION lib/${PROJECT_NAME}
+)
 
+if(BUILD_TESTING)
+  find_package(ament_cmake_pytest REQUIRED)
+  ament_add_pytest_test(test_lift_axis_calibration test/test_lift_axis_calibration.py)
+endif()
+
+ament_package()

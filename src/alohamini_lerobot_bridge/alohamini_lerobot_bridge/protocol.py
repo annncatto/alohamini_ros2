@@ -80,12 +80,51 @@ def signed_tick_delta(tick: int, reference_tick: int, period: int) -> int:
 
 
 class JointMapper:
-    """Convert Host-normalized motor observations to the authoritative URDF space."""
+    """Convert between Host motor normalization and authoritative URDF space."""
 
-    def __init__(self, calibration: dict[str, Any]) -> None:
+    def __init__(
+        self, calibration: dict[str, Any], lift_calibration: dict[str, Any] | None = None
+    ) -> None:
         self.period = int(calibration["ticks_per_revolution"])
         self.joints = calibration["joints"]
+        self.lift_calibration = lift_calibration
         self.previous: dict[str, float] = {}
+
+    def lift_height_to_urdf(self, height_mm: float) -> float:
+        if not isinstance(self.lift_calibration, dict):
+            raise ValueError("lift-axis calibration is required")
+        mechanism = self.lift_calibration["mechanism"]
+        urdf = self.lift_calibration["urdf"]
+        physical_min = float(mechanism["physical_min_mm"])
+        physical_max = float(mechanism["physical_max_mm"])
+        q_min = float(urdf["q_at_physical_min_m"])
+        q_max = float(urdf["q_at_physical_max_m"])
+        if physical_max <= physical_min or q_max <= q_min:
+            raise ValueError("invalid lift-axis calibration range")
+        height = float(height_mm)
+        if bool(urdf.get("clamp_to_physical_range", True)):
+            height = min(physical_max, max(physical_min, height))
+        ratio = (height - physical_min) / (physical_max - physical_min)
+        return q_min + ratio * (q_max - q_min)
+
+    def lift_urdf_to_height(self, position_m: float) -> float:
+        if not isinstance(self.lift_calibration, dict):
+            raise ValueError("lift-axis calibration is required")
+        mechanism = self.lift_calibration["mechanism"]
+        urdf = self.lift_calibration["urdf"]
+        physical_min = float(mechanism["physical_min_mm"])
+        physical_max = float(mechanism["physical_max_mm"])
+        q_min = float(urdf["q_at_physical_min_m"])
+        q_max = float(urdf["q_at_physical_max_m"])
+        position = finite_number(position_m, "vertical_move")
+        if physical_max <= physical_min or q_max <= q_min:
+            raise ValueError("invalid lift-axis calibration range")
+        if position < q_min or position > q_max:
+            raise ValueError(
+                f"vertical_move {position:.6f} is outside [{q_min:.6f}, {q_max:.6f}]"
+            )
+        ratio = (position - q_min) / (q_max - q_min)
+        return physical_min + ratio * (physical_max - physical_min)
 
     def lerobot_to_tick(self, value: float, metadata: dict[str, Any]) -> int:
         lower = int(metadata["range_min"])
@@ -107,6 +146,25 @@ class JointMapper:
             return int(value * (self.period - 1) / 360.0 + midpoint)
         raise ValueError(f"Unsupported Host normalization: {mode!r}")
 
+    def tick_to_lerobot(self, tick: int, metadata: dict[str, Any]) -> float:
+        lower = int(metadata["range_min"])
+        upper = int(metadata["range_max"])
+        if upper <= lower:
+            raise ValueError("Host motor range_max must exceed range_min")
+        mode = metadata["normalization"]
+        drive_mode = int(metadata["drive_mode"])
+        tick = min(upper, max(lower, int(tick)))
+        if mode == "range_m100_100":
+            normalized = (tick - lower) * 200.0 / (upper - lower) - 100.0
+            return -normalized if drive_mode else normalized
+        if mode == "range_0_100":
+            normalized = (tick - lower) * 100.0 / (upper - lower)
+            return 100.0 - normalized if drive_mode else normalized
+        if mode == "degrees":
+            midpoint = (lower + upper) / 2.0
+            return (tick - midpoint) * 360.0 / (self.period - 1)
+        raise ValueError(f"Unsupported Host normalization: {mode!r}")
+
     def tick_to_urdf(self, joint: str, tick: int, state_key: str) -> float:
         entry = self.joints[joint]
         delta = signed_tick_delta(tick, int(entry["reference_tick"]), self.period)
@@ -120,6 +178,56 @@ class JointMapper:
             value += round((self.previous[state_key] - value) / period_rad) * period_rad
         self.previous[state_key] = value
         return value
+
+    @staticmethod
+    def _joint_from_urdf_name(urdf_name: str) -> tuple[str, str]:
+        side, separator, suffix = urdf_name.partition("_")
+        if side not in ("left", "right") or not separator:
+            raise ValueError(f"Unsupported arm joint: {urdf_name}")
+        joint = "wrist_yaw" if suffix == "wrist_yaw_joint" else suffix
+        if joint not in ARM_JOINTS:
+            raise ValueError(f"Unsupported arm joint: {urdf_name}")
+        return side, joint
+
+    def urdf_to_lerobot(
+        self, urdf_name: str, position: float, metadata: dict[str, Any]
+    ) -> tuple[str, float]:
+        """Return the Host action key/value for one URDF arm joint."""
+        side, joint = self._joint_from_urdf_name(urdf_name)
+        entry = self.joints[joint]
+        q = finite_number(position, urdf_name)
+        calibrated_limits = [
+            float(entry[key])
+            for key in ("safe_q_min_rad", "safe_q_max_rad")
+            if entry.get(key) is not None
+        ]
+        if joint == "wrist_roll" and not calibrated_limits:
+            calibrated_limits = [-math.pi, math.pi]
+        if joint == "gripper" and not calibrated_limits:
+            calibrated_limits = [
+                float(entry["urdf_open_rad"]),
+                float(entry["urdf_closed_rad"]),
+            ]
+        if calibrated_limits:
+            lower = min(calibrated_limits)
+            upper = max(calibrated_limits)
+            if q < lower or q > upper:
+                raise ValueError(
+                    f"{urdf_name} {q:.6f} is outside calibrated "
+                    f"[{lower:.6f}, {upper:.6f}]"
+                )
+        ratio = float(entry.get("joint_per_encoder_ratio", 1.0))
+        sign = int(entry["sign"])
+        if ratio == 0.0 or sign not in (-1, 1):
+            raise ValueError(f"invalid calibration for {joint}")
+        delta = (q - float(entry["reference_q_rad"])) * self.period
+        delta /= sign * 2.0 * math.pi * ratio
+        tick = (int(entry["reference_tick"]) + round(delta)) % self.period
+        motor_name = f"arm_{side}_{joint}"
+        motor_metadata = metadata.get("motors", {}).get(motor_name)
+        if not isinstance(motor_metadata, dict):
+            raise ValueError(f"Host metadata lacks {motor_name}")
+        return f"{motor_name}.pos", self.tick_to_lerobot(tick, motor_metadata)
 
     def observation_to_joint_positions(
         self, observation: dict[str, Any], metadata: dict[str, Any]
@@ -142,8 +250,8 @@ class JointMapper:
                 urdf_name = f"{side}_{suffix}"
                 positions[urdf_name] = self.tick_to_urdf(joint, tick, urdf_name)
         if "lift_axis.height_mm" in observation:
-            positions["vertical_move"] = (
-                float(observation["lift_axis.height_mm"]) / 1000.0
+            positions["vertical_move"] = self.lift_height_to_urdf(
+                float(observation["lift_axis.height_mm"])
             )
         return positions
 

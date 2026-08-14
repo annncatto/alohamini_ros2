@@ -48,6 +48,31 @@ def test_host_normalization_to_reference_urdf():
     assert abs(tick - 2027) <= 1
     assert abs(mapper.tick_to_urdf("shoulder_pan", tick, "left_shoulder_pan")) < 0.002
 
+    key, normalized = mapper.urdf_to_lerobot("left_shoulder_pan", 0.0, {
+        "motors": {"arm_left_shoulder_pan": metadata}
+    })
+    assert key == "arm_left_shoulder_pan.pos"
+    assert mapper.lerobot_to_tick(normalized, metadata) == pytest.approx(2027, abs=1)
+
+
+def test_lift_physical_endpoints_map_to_urdf_limits():
+    mapper = JointMapper(
+        {"ticks_per_revolution": 4096, "joints": {}},
+        {
+            "mechanism": {"physical_min_mm": 0.0, "physical_max_mm": 600.0},
+            "urdf": {
+                "q_at_physical_min_m": -0.3,
+                "q_at_physical_max_m": 0.3,
+                "clamp_to_physical_range": True,
+            },
+        },
+    )
+
+    assert mapper.lift_height_to_urdf(0.0) == pytest.approx(-0.3)
+    assert mapper.lift_height_to_urdf(300.0) == pytest.approx(0.0)
+    assert mapper.lift_height_to_urdf(600.0) == pytest.approx(0.3)
+    assert mapper.lift_height_to_urdf(605.0) == pytest.approx(0.3)
+
 
 def test_command_gate_requires_a_new_command_after_every_enable():
     gate = CommandGate()
