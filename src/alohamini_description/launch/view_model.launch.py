@@ -15,18 +15,18 @@ def generate_launch_description() -> LaunchDescription:
     use_gui = LaunchConfiguration("use_gui")
     use_rviz = LaunchConfiguration("use_rviz")
 
-    home = {
+    model_zero = {
         "zeros.left_shoulder_pan": 0.0,
         "zeros.left_shoulder_lift": 0.0,
         "zeros.left_elbow_flex": 0.0,
-        "zeros.left_wrist_flex": 1.435806017460960,
+        "zeros.left_wrist_flex": 0.0,
         "zeros.left_wrist_yaw_joint": 0.0,
         "zeros.left_wrist_roll": 0.0,
         "zeros.left_gripper": 0.32,
         "zeros.right_shoulder_pan": 0.0,
         "zeros.right_shoulder_lift": 0.0,
         "zeros.right_elbow_flex": 0.0,
-        "zeros.right_wrist_flex": 1.5,
+        "zeros.right_wrist_flex": 0.0,
         "zeros.right_wrist_yaw_joint": 0.0,
         "zeros.right_wrist_roll": 0.0,
         "zeros.right_gripper": 0.32,
@@ -50,8 +50,11 @@ def generate_launch_description() -> LaunchDescription:
                 package="joint_state_publisher_gui",
                 executable="joint_state_publisher_gui",
                 name="alohamini_view_joint_state_publisher_gui",
-                parameters=[{"robot_description": robot_description}, home],
-                remappings=[("joint_states", "/alohamini_view/joint_states")],
+                parameters=[{"robot_description": robot_description}, model_zero],
+                remappings=[
+                    ("joint_states", "/alohamini_view/joint_states"),
+                    ("robot_description", "/alohamini/robot_description"),
+                ],
                 condition=IfCondition(use_gui),
                 output="screen",
             ),
@@ -59,8 +62,11 @@ def generate_launch_description() -> LaunchDescription:
                 package="joint_state_publisher",
                 executable="joint_state_publisher",
                 name="alohamini_view_joint_state_publisher",
-                parameters=[{"robot_description": robot_description}, home],
-                remappings=[("joint_states", "/alohamini_view/joint_states")],
+                parameters=[{"robot_description": robot_description}, model_zero],
+                remappings=[
+                    ("joint_states", "/alohamini_view/joint_states"),
+                    ("robot_description", "/alohamini/robot_description"),
+                ],
                 condition=UnlessCondition(use_gui),
                 output="screen",
             ),

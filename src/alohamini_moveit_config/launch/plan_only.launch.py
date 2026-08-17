@@ -76,7 +76,10 @@ def generate_launch_description() -> LaunchDescription:
                 executable="joint_state_publisher",
                 name="alohamini_fake_joint_state_publisher",
                 parameters=[moveit_config.robot_description, home],
-                remappings=[("joint_states", "/alohamini_plan_only/joint_states")],
+                remappings=[
+                    ("joint_states", "/alohamini_plan_only/joint_states"),
+                    ("robot_description", "/alohamini/robot_description"),
+                ],
                 output="screen",
                 condition=UnlessCondition(LaunchConfiguration("joycon_preview")),
             ),
