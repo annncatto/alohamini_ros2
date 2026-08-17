@@ -105,7 +105,11 @@ def test_partial_arm_goal_latches_unspecified_joints_from_fresh_measurement():
     )
     assert action[roll_key] == pytest.approx(roll_value)
     assert not any(key.startswith("arm_right_") for key in action)
-    assert not any(key.endswith(".vel") for key in action)
+    assert {key: action[key] for key in ("x.vel", "y.vel", "theta.vel")} == {
+        "x.vel": 0.0,
+        "y.vel": 0.0,
+        "theta.vel": 0.0,
+    }
 
 
 def test_stale_state_sends_one_base_zero_then_yields_to_host_watchdog():
@@ -203,7 +207,11 @@ def test_independently_active_resources_compose_without_inactive_resource_fields
     assert any(key.startswith("arm_left_") for key in action)
     assert "lift_axis.height_mm" in action
     assert not any(key.startswith("arm_right_") for key in action)
-    assert not any(key.endswith(".vel") for key in action)
+    assert {key: action[key] for key in ("x.vel", "y.vel", "theta.vel")} == {
+        "x.vel": 0.0,
+        "y.vel": 0.0,
+        "theta.vel": 0.0,
+    }
 
 
 def test_tracking_error_aborts_and_holds_latest_measurement_not_old_target():
@@ -230,6 +238,76 @@ def test_tracking_error_aborts_and_holds_latest_measurement_not_old_target():
     assert action[key] == pytest.approx(expected)
 
 
+def test_lift_command_changes_while_feedback_is_fixed_then_path_aborts():
+    composer = _composer()
+    composer.enable()
+    measured = _measured()
+    measured["vertical_move"] = -0.3
+    goal_id = composer.start_trajectory(
+        "lift",
+        ["vertical_move"],
+        [TrajectorySample(5.0, {"vertical_move": -0.1})],
+        measured,
+        True,
+        now=0.0,
+    )
+
+    first = composer.compose(measured, _metadata(), True, now=0.2)
+    second = composer.compose(measured, _metadata(), True, now=0.5)
+    aborted = composer.compose(measured, _metadata(), True, now=0.8)
+
+    assert second["lift_axis.height_mm"] > first["lift_axis.height_mm"]
+    event = composer.resources["lift"].terminal(goal_id)
+    assert event is not None and event.state is TerminalState.ABORTED
+    assert aborted["lift_axis.height_mm"] == pytest.approx(0.0)
+
+
+def test_lift_small_goal_requires_real_arrival_before_success():
+    composer = _composer()
+    composer.enable()
+    measured = _measured()
+    measured["vertical_move"] = -0.3
+    goal_id = composer.start_trajectory(
+        "lift",
+        ["vertical_move"],
+        [TrajectorySample(5.0, {"vertical_move": -0.295})],
+        measured,
+        True,
+        now=0.0,
+    )
+
+    at_nominal_end = composer.compose(measured, _metadata(), True, now=5.0)
+
+    assert at_nominal_end["lift_axis.height_mm"] == pytest.approx(5.0)
+    assert composer.resources["lift"].terminal(goal_id) is None
+
+    after_grace = composer.compose(measured, _metadata(), True, now=6.01)
+    event = composer.resources["lift"].terminal(goal_id)
+    assert event is not None and event.state is TerminalState.GOAL_TOLERANCE
+    assert after_grace["lift_axis.height_mm"] == pytest.approx(0.0)
+
+
+def test_lift_goal_succeeds_only_with_feedback_inside_goal_tolerance():
+    composer = _composer()
+    composer.enable()
+    measured = _measured()
+    measured["vertical_move"] = -0.3
+    goal_id = composer.start_trajectory(
+        "lift",
+        ["vertical_move"],
+        [TrajectorySample(5.0, {"vertical_move": -0.295})],
+        measured,
+        True,
+        now=0.0,
+    )
+    measured["vertical_move"] = -0.296
+
+    composer.compose(measured, _metadata(), True, now=5.0)
+
+    event = composer.resources["lift"].terminal(goal_id)
+    assert event is not None and event.state is TerminalState.SUCCEEDED
+
+
 def test_cancel_holds_only_when_measurement_is_fresh():
     composer = _composer()
     composer.enable()
@@ -245,7 +323,10 @@ def test_cancel_holds_only_when_measurement_is_fresh():
     measured["vertical_move"] = 0.02
     assert composer.cancel_trajectory("lift", goal_id, measured, True, now=1.1)
     assert composer.compose(measured, _metadata(), True, now=1.15) == {
-        "lift_axis.height_mm": pytest.approx(320.0)
+        "lift_axis.height_mm": pytest.approx(320.0),
+        "x.vel": 0.0,
+        "y.vel": 0.0,
+        "theta.vel": 0.0,
     }
 
     goal_id = composer.start_trajectory(
@@ -258,3 +339,29 @@ def test_cancel_holds_only_when_measurement_is_fresh():
     )
     assert composer.cancel_trajectory("lift", goal_id, measured, False, now=2.1)
     assert composer.compose(measured, _metadata(), True, now=2.15) is None
+
+
+def test_disable_stops_active_lift_without_stale_position_hold():
+    composer = _composer()
+    composer.enable()
+    measured = _measured()
+    composer.start_trajectory(
+        "lift",
+        ["vertical_move"],
+        [TrajectorySample(1.0, {"vertical_move": 0.1})],
+        measured,
+        True,
+        now=1.0,
+    )
+    assert composer.compose(measured, _metadata(), True, now=1.1)
+
+    fresh_stop = composer.disable_action(measured, _metadata(), True)
+    stale_stop = composer.disable_action(measured, _metadata(), False)
+
+    assert fresh_stop == {
+        "x.vel": 0.0,
+        "y.vel": 0.0,
+        "theta.vel": 0.0,
+        "lift_axis.vel": 0.0,
+    }
+    assert stale_stop == {"x.vel": 0.0, "y.vel": 0.0, "theta.vel": 0.0}

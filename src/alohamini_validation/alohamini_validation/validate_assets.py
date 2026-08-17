@@ -191,10 +191,13 @@ def validate_fk(model: UrdfKinematics, description: Path, validation: Path) -> N
 def validate_mapping(calibration: Path, description: Path, validation: Path) -> None:
     right = load_yaml(calibration / "config/hardware/hardware_joint_map_right.yaml")
     left = load_yaml(calibration / "config/hardware/hardware_joint_map_left.yaml")
+    home = load_yaml(calibration / "config/hardware/arm_home.yaml")
     lift = load_yaml(calibration / "config/hardware/lift_axis.yaml")
-    assert left["inherits"] == "hardware_joint_map_right.yaml"
-    assert left["calibration_source_side"] == "right"
+    assert left["side"] == "left"
+    assert right["side"] == "right"
+    assert set(left["joints"]) == set(right["joints"])
     period = int(right["ticks_per_revolution"])
+    assert int(left["ticks_per_revolution"]) == period
     one_tick = 2 * math.pi / period
     direction_reference = load_yaml(validation / "config/joint_direction_reference.yaml")["joint_state_gui"]
     urdf = ET.parse(description / "urdf/alohamini2pro_kinematic.urdf").getroot()
@@ -211,22 +214,49 @@ def validate_mapping(calibration: Path, description: Path, validation: Path) -> 
             description / "urdf/alohamini2pro_moveit.urdf",
         )
     }
-    for name, entry in right["joints"].items():
-        reference_q = float(entry["reference_q_rad"])
-        assert math.isclose(tick_to_rad(entry, int(entry["reference_tick"]), period), reference_q)
-        lower, upper = joint_limits(entry, name)
-        for value in (lower, reference_q, upper, (lower + upper) / 2):
-            tick = rad_to_tick(entry, value, period)
-            recovered = tick_to_rad(entry, tick, period, near=value)
-            assert abs(recovered - value) <= one_tick * float(entry.get("joint_per_encoder_ratio", 1.0))
-        positive_tick = rad_to_tick(entry, reference_q + one_tick, period)
-        direction = signed_tick_delta(positive_tick, int(entry["reference_tick"]), period)
-        assert direction == int(entry["sign"]), f"{name}: positive-q tick direction drift"
-        suffix = "wrist_yaw_joint" if name == "wrist_yaw" else name
-        expected = direction_reference[suffix]
-        expected_tick_direction = "increasing" if int(entry["sign"]) == 1 else "decreasing"
-        assert expected["positive_q_raw_tick_direction"] == expected_tick_direction
-        for side in ("left", "right"):
+    for side, mapping in (("left", left), ("right", right)):
+        expected_reference_ticks = mapping["reference_capture"]["ticks"]
+        stowed_ticks = home["installed_arm_present_position_ticks"][side]["values"]
+        for index, (name, entry) in enumerate(mapping["joints"].items()):
+            reference_q = float(entry["reference_q_rad"])
+            assert math.isclose(
+                tick_to_rad(entry, int(entry["reference_tick"]), period), reference_q
+            )
+            if name != "gripper":
+                assert int(entry["reference_tick"]) == int(
+                    expected_reference_ticks[index]
+                )
+                assert math.isclose(
+                    reference_q,
+                    float(home["mapping_reference_cad_home_q_rad_by_side"][side][name]),
+                )
+                suffix = "wrist_yaw_joint" if name == "wrist_yaw" else name
+                stowed_name = f"{side}_{suffix}"
+                expected_stowed = float(home["stowed_joint_positions"][stowed_name])
+                actual_stowed = tick_to_rad(
+                    entry, int(stowed_ticks[index]), period, near=expected_stowed
+                )
+                assert math.isclose(actual_stowed, expected_stowed, abs_tol=1e-11)
+            lower, upper = joint_limits(entry, name)
+            for value in (lower, reference_q, upper, (lower + upper) / 2):
+                tick = rad_to_tick(entry, value, period)
+                recovered = tick_to_rad(entry, tick, period, near=value)
+                assert abs(recovered - value) <= one_tick * float(
+                    entry.get("joint_per_encoder_ratio", 1.0)
+                )
+            positive_tick = rad_to_tick(entry, reference_q + one_tick, period)
+            direction = signed_tick_delta(
+                positive_tick, int(entry["reference_tick"]), period
+            )
+            assert direction == int(entry["sign"]), (
+                f"{side}/{name}: positive-q tick direction drift"
+            )
+            suffix = "wrist_yaw_joint" if name == "wrist_yaw" else name
+            expected = direction_reference[suffix]
+            expected_tick_direction = (
+                "increasing" if int(entry["sign"]) == 1 else "decreasing"
+            )
+            assert expected["positive_q_raw_tick_direction"] == expected_tick_direction
             axis = np.fromstring(urdf_joints[f"{side}_{suffix}"].find("axis").get("xyz"), sep=" ")
             assert np.array_equal(axis, np.asarray(expected["urdf_axis_xyz"], dtype=float))
             joint_name = f"{side}_{suffix}"
@@ -241,7 +271,7 @@ def validate_mapping(calibration: Path, description: Path, validation: Path) -> 
                     f"{filename}/{joint_name} upper limit drift"
                 )
     assert int(right["joints"]["shoulder_pan"]["sign"]) == 1
-    assert int(right["joints"]["wrist_yaw"]["reference_tick"]) == 2047
+    assert int(left["joints"]["shoulder_pan"]["sign"]) == 1
     assert float(lift["mechanism"]["physical_min_mm"]) == 0.0
     assert float(lift["mechanism"]["physical_max_mm"]) == 600.0
     assert float(lift["urdf"]["q_at_physical_min_m"]) == -0.3
@@ -273,7 +303,28 @@ def validate_collision(description: Path, validation: Path) -> None:
     assert actual == expected, f"collision baseline drift: {actual} != {expected}"
     for mesh in model.findall(".//mesh"):
         assert resolve_package_uri(mesh.get("filename"), description).is_file()
+    for material in model.findall(".//visual/material"):
+        assert material.get("name"), "visual material names must not be empty"
     links = {link.get("name"): link for link in model.findall("link")}
+    arm_collision_meshes = {
+        "Base": "arm_base_vhacd.stl",
+        "Rotation_Pitch": "rotation_pitch_vhacd.stl",
+        "Upper_Arm": "upper_arm_vhacd.stl",
+        "Lower_Arm": "lower_arm_vhacd.stl",
+        "Wrist_Pitch_Roll": "wrist_pitch_roll_vhacd.stl",
+        "wrist_yaw": "wrist_yaw_vhacd.stl",
+        "Fixed_Jaw": "fixed_jaw_vhacd.stl",
+        "camera": "wrist_camera_vhacd.stl",
+    }
+    for side in ("left", "right"):
+        for suffix, collision_name in arm_collision_meshes.items():
+            link = links[f"{side}_{suffix}"]
+            visual = link.find("visual/geometry/mesh")
+            collision = link.find("collision/geometry/mesh")
+            assert visual is not None and f"/visual/{side}_{suffix}.STL" in visual.get("filename")
+            assert collision is not None and collision.get("filename").endswith(
+                f"/collision/{collision_name}"
+            )
     for side in ("left", "right"):
         moving = links[f"{side}_Moving_Jaw"]
         assert len(moving.findall("collision/geometry/mesh")) == int(
@@ -283,6 +334,7 @@ def validate_collision(description: Path, validation: Path) -> None:
     assert len(base_collision) == 1 and base_collision[0].get("filename").endswith("/base_link.STL")
     passive = {joint.get("name") for joint in srdf.findall("passive_joint")}
     assert passive == {"wheel1_joint", "wheel2_joint", "wheel3_joint"}
+    assert baseline["state_validity"]["installed_stowed"]["contact_pairs"] == []
     for index, wheel in enumerate(("wheel1", "wheel2", "wheel3"), start=2):
         visual_meshes = links[wheel].findall("visual/geometry/mesh")
         assert len(visual_meshes) == 1

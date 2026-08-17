@@ -9,7 +9,7 @@ Robot-specific calibration is owned by `alohamini_calibration`.
 - `urdf/source/`: CAD-export source baseline; only mesh paths were relocated to
   ROS package URIs.
 - `urdf/alohamini2pro_moveit.urdf`: geometry-bearing planning model with TCP
-  frames, corrected physical joint limits, and simplified collision geometry.
+  frames, corrected physical joint limits, and the current collision baseline.
 - `urdf/*_kinematic.urdf`: mesh-free TF/FK/IK models.
 - `urdf/components/lidar_three_wheel.xacro`: legacy three-wheel source component
   retained from the lidar repository for comparison.
@@ -25,6 +25,14 @@ The authoritative kinematic and MoveIt models use the current AlohaMini2Pro
 126.9 mm wheel CAD (`Link2_dp`/`Link3_dp`/`Link4_dp`) with unambiguous
 `wheel1`/`wheel2`/`wheel3` link names and continuous `wheelN_joint` joints.
 The current Runtime parameters are wheel radius 0.063 m and base radius 0.195 m.
+
+The current arm collision baseline uses VHACD meshes in the same link frames as
+the visual CAD. It replaces the former single, 2 mm padded AABB per rigid arm
+link so compact physical poses can be checked without AABB-filled empty space.
+Because the left/right CAD sources are byte-identical, both sides share one
+generated mesh per link type. Moving jaws retain their reviewed six-piece
+VHACD model. Generation parameters and per-hull measurements are recorded in
+`config/kinematics/arm_collision_report.json`.
 
 The lidar repository's older approximately 99 mm wheel component is retained
 only as a provenance/visual comparison and can be previewed with:

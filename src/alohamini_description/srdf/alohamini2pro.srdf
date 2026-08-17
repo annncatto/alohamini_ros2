@@ -16,19 +16,36 @@
   <group name="right_gripper">
     <joint name="right_gripper" />
   </group>
+  <!-- Installed encoder Home bound to the matching folded CAD pose. -->
   <group_state name="home" group="left_arm">
     <joint name="left_shoulder_pan" value="0.0" />
-    <joint name="left_shoulder_lift" value="-1.571" />
-    <joint name="left_elbow_flex" value="1.571" />
-    <joint name="left_wrist_flex" value="0.0" />
+    <joint name="left_shoulder_lift" value="0.0" />
+    <joint name="left_elbow_flex" value="0.0" />
+    <joint name="left_wrist_flex" value="1.435806017460960" />
     <joint name="left_wrist_yaw_joint" value="0.0" />
     <joint name="left_wrist_roll" value="0.0" />
   </group_state>
   <group_state name="home" group="right_arm">
     <joint name="right_shoulder_pan" value="0.0" />
-    <joint name="right_shoulder_lift" value="-1.571" />
-    <joint name="right_elbow_flex" value="1.571" />
-    <joint name="right_wrist_flex" value="0.0" />
+    <joint name="right_shoulder_lift" value="0.0" />
+    <joint name="right_elbow_flex" value="0.0" />
+    <joint name="right_wrist_flex" value="1.5" />
+    <joint name="right_wrist_yaw_joint" value="0.0" />
+    <joint name="right_wrist_roll" value="0.0" />
+  </group_state>
+  <group_state name="stowed" group="left_arm">
+    <joint name="left_shoulder_pan" value="0.0" />
+    <joint name="left_shoulder_lift" value="0.0" />
+    <joint name="left_elbow_flex" value="0.0" />
+    <joint name="left_wrist_flex" value="1.435806017460960" />
+    <joint name="left_wrist_yaw_joint" value="0.0" />
+    <joint name="left_wrist_roll" value="0.0" />
+  </group_state>
+  <group_state name="stowed" group="right_arm">
+    <joint name="right_shoulder_pan" value="0.0" />
+    <joint name="right_shoulder_lift" value="0.0" />
+    <joint name="right_elbow_flex" value="0.0" />
+    <joint name="right_wrist_flex" value="1.5" />
     <joint name="right_wrist_yaw_joint" value="0.0" />
     <joint name="right_wrist_roll" value="0.0" />
   </group_state>

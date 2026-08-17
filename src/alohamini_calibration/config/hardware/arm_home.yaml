@@ -1,0 +1,67 @@
+schema_version: 1
+robot_model: alohamini2pro
+status: installed_folded_home_bound_to_cad_home
+captured_at: "2026-08-17T11:46:11+09:00"
+
+mapping_reference_cad_home_q_rad_by_side:
+  left:
+    shoulder_pan: 0.0
+    shoulder_lift: 0.0
+    elbow_flex: 0.0
+    wrist_flex: 1.435806017460960
+    wrist_yaw: 0.0
+    wrist_roll: 0.0
+  right:
+    shoulder_pan: 0.0
+    shoulder_lift: 0.0
+    elbow_flex: 0.0
+    wrist_flex: 1.5
+    wrist_yaw: 0.0
+    wrist_roll: 0.0
+
+installed_arm_present_position_ticks:
+  left:
+    device: /dev/ttyACM1
+    values: [2014, 917, 3132, 3025, 1986, 2052]
+  right:
+    device: /dev/ttyACM0
+    values: [2041, 969, 3074, 3129, 2050, 2106]
+
+# The installed encoder Home is the reference capture for this robot and is
+# explicitly bound to the collision-free folded CAD Home below.
+stowed_joint_positions:
+  left_shoulder_pan: 0.0
+  left_shoulder_lift: 0.0
+  left_elbow_flex: 0.0
+  left_wrist_flex: 1.435806017460960
+  left_wrist_yaw_joint: 0.0
+  left_wrist_roll: 0.0
+  right_shoulder_pan: 0.0
+  right_shoulder_lift: 0.0
+  right_elbow_flex: 0.0
+  right_wrist_flex: 1.5
+  right_wrist_yaw_joint: 0.0
+  right_wrist_roll: 0.0
+
+offline_initial_joint_positions:
+  left_shoulder_pan: 0.0
+  left_shoulder_lift: 0.0
+  left_elbow_flex: 0.0
+  left_wrist_flex: 1.435806017460960
+  left_wrist_yaw_joint: 0.0
+  left_wrist_roll: 0.0
+  left_gripper: 0.32
+  right_shoulder_pan: 0.0
+  right_shoulder_lift: 0.0
+  right_elbow_flex: 0.0
+  right_wrist_flex: 1.5
+  right_wrist_yaw_joint: 0.0
+  right_wrist_roll: 0.0
+  right_gripper: 0.32
+
+notes:
+  - Present_Position already includes each servo EEPROM Homing_Offset.
+  - Each side uses its own measured Home tick as the CAD Home mapping anchor.
+  - Left wrist_flex uses the encoder-derived CAD angle; right wrist_flex is reduced to 1.50 rad for verified collision clearance.
+  - The folded Home is a common collision-sensitive state near several measured range endpoints.
+  - Gripper is not part of the SRDF arm groups; offline startup retains nominal closed values.

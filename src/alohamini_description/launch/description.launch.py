@@ -15,11 +15,15 @@ def generate_launch_description():
             Node(
                 package="robot_state_publisher",
                 executable="robot_state_publisher",
+                name="alohamini_robot_state_publisher",
                 parameters=[
                     {
                         "robot_description": robot_description,
                         "use_sim_time": False,
                     }
+                ],
+                remappings=[
+                    ("robot_description", "/alohamini/robot_description"),
                 ],
                 output="screen",
             ),

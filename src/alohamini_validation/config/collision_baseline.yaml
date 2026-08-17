@@ -4,16 +4,20 @@ geometry_counts:
   links: 31
   joints: 30
   visuals: 26
-  collisions: 38
-  collision_boxes: 22
+  collisions: 36
+  collision_boxes: 4
   collision_cylinders: 3
-  collision_meshes: 13
+  collision_meshes: 29
   srdf_disabled_pairs: 37
 moving_jaw_vhacd_pieces_per_side: 6
 state_validity:
   reference_clear:
     valid: true
     joints: {}
+    contact_pairs: []
+  installed_stowed:
+    valid: true
+    source: alohamini_calibration/config/hardware/arm_home.yaml
     contact_pairs: []
   right_lower_arm_into_base:
     valid: false
@@ -24,6 +28,9 @@ state_validity:
       - [base_link, right_Lower_Arm]
 notes:
   - The exact base_link mesh remains collision geometry.
-  - Arm and sensor CAD collision meshes use conservative 2 mm padded local AABBs.
+  - Arm rigid links and wrist cameras use symmetric shared VHACD meshes.
+  - Moving jaws retain the reviewed six-piece VHACD collision model on each side.
+  - The measured installed stowed pose is an explicit state-validity acceptance sample.
+  - The installed encoder Home is bound to the collision-free folded CAD pose without extra ACM exclusions.
   - Wheels use unpadded cylinders fitted to the current CAD extents.
   - This structural baseline does not certify physical collision clearance.

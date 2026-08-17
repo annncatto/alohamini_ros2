@@ -9,7 +9,8 @@ frames:
   base_link_ros_axis_convention: unaudited
 
 calibration_authority: alohamini_calibration
-collision_local_origins: changed_for_aabb_simplification
+collision_local_origins: arm_vhacd_meshes_match_visual_frames
+collision_profile: arm_vhacd_validation_pending_compact_pose
 
 integration:
   physical_runtime_authority: /home/anncatto/lerobot_alohamini

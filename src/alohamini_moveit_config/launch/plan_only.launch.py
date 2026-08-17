@@ -33,11 +33,21 @@ def generate_launch_description() -> LaunchDescription:
         .to_moveit_configs()
     )
 
+    # Installed folded Home from alohamini_calibration/config/hardware/arm_home.yaml.
+    # Keep every arm joint explicit so collision checks cover the real common pose.
     home = {
-        "zeros.left_shoulder_lift": -1.571,
-        "zeros.left_elbow_flex": 1.571,
-        "zeros.right_shoulder_lift": -1.571,
-        "zeros.right_elbow_flex": 1.571,
+        "zeros.left_shoulder_pan": 0.0,
+        "zeros.left_shoulder_lift": 0.0,
+        "zeros.left_elbow_flex": 0.0,
+        "zeros.left_wrist_flex": 1.435806017460960,
+        "zeros.left_wrist_yaw_joint": 0.0,
+        "zeros.left_wrist_roll": 0.0,
+        "zeros.right_shoulder_pan": 0.0,
+        "zeros.right_shoulder_lift": 0.0,
+        "zeros.right_elbow_flex": 0.0,
+        "zeros.right_wrist_flex": 1.5,
+        "zeros.right_wrist_yaw_joint": 0.0,
+        "zeros.right_wrist_roll": 0.0,
         "zeros.left_gripper": 0.32,
         "zeros.right_gripper": 0.32,
     }
@@ -47,6 +57,9 @@ def generate_launch_description() -> LaunchDescription:
             "allow_trajectory_execution": False,
             "publish_robot_description_semantic": True,
             "monitor_dynamics": False,
+            # Never let an offline fake state race the real bridge on
+            # /joint_states when both graphs are visible on the same domain.
+            "planning_scene_monitor_options.joint_state_topic": "/alohamini_plan_only/joint_states",
         },
     ]
 
@@ -63,13 +76,19 @@ def generate_launch_description() -> LaunchDescription:
                 executable="joint_state_publisher",
                 name="alohamini_fake_joint_state_publisher",
                 parameters=[moveit_config.robot_description, home],
+                remappings=[("joint_states", "/alohamini_plan_only/joint_states")],
                 output="screen",
                 condition=UnlessCondition(LaunchConfiguration("joycon_preview")),
             ),
             Node(
                 package="robot_state_publisher",
                 executable="robot_state_publisher",
+                name="alohamini_plan_only_robot_state_publisher",
                 parameters=[moveit_config.robot_description],
+                remappings=[
+                    ("joint_states", "/alohamini_plan_only/joint_states"),
+                    ("robot_description", "/alohamini/robot_description"),
+                ],
                 output="screen",
             ),
             Node(

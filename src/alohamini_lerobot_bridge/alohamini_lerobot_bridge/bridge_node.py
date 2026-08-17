@@ -27,6 +27,7 @@ from .protocol import (
     BodyVelocity,
     JointMapper,
     ZmqHostTransport,
+    lift_command_ready,
     validate_state_observation,
     wheel_velocity_from_body,
 )
@@ -49,8 +50,11 @@ class AlohaMiniLeRobotBridge(Node):
             "request_timeout_sec": 1.0,
             "command_timeout_sec": 0.5,
             "trajectory_hold_sec": 0.25,
-            "arm_tracking_error_rad": 0.35,
-            "lift_tracking_error_m": 0.03,
+            "arm_path_tolerance_rad": 0.35,
+            "lift_path_tolerance_m": 0.03,
+            "arm_goal_tolerance_rad": 0.03,
+            "lift_goal_tolerance_m": 0.003,
+            "goal_time_tolerance_sec": 1.0,
             "expected_robot_model": "alohamini2pro",
             "require_model_match": True,
             "cmd_vel_topic": "/cmd_vel",
@@ -71,15 +75,19 @@ class AlohaMiniLeRobotBridge(Node):
             self.declare_parameter(name, value)
 
         calibration_share = Path(get_package_share_directory("alohamini_calibration"))
-        with (calibration_share / "config/hardware/hardware_joint_map_right.yaml").open(
-            encoding="utf-8"
-        ) as stream:
-            joint_calibration = yaml.safe_load(stream)
+        joint_calibrations = {}
+        for side in ("left", "right"):
+            path = (
+                calibration_share
+                / f"config/hardware/hardware_joint_map_{side}.yaml"
+            )
+            with path.open(encoding="utf-8") as stream:
+                joint_calibrations[side] = yaml.safe_load(stream)
         with (calibration_share / "config/hardware/lift_axis.yaml").open(
             encoding="utf-8"
         ) as stream:
             lift_calibration = yaml.safe_load(stream)
-        self.mapper = JointMapper(joint_calibration, lift_calibration)
+        self.mapper = JointMapper(joint_calibrations, lift_calibration)
 
         self.transport = ZmqHostTransport(
             str(self.get_parameter("host").value),
@@ -97,9 +105,12 @@ class AlohaMiniLeRobotBridge(Node):
         self.composer = CommandComposer(
             self.mapper,
             self.command_timeout,
-            float(self.get_parameter("arm_tracking_error_rad").value),
-            float(self.get_parameter("lift_tracking_error_m").value),
+            float(self.get_parameter("arm_path_tolerance_rad").value),
+            float(self.get_parameter("lift_path_tolerance_m").value),
             float(self.get_parameter("trajectory_hold_sec").value),
+            float(self.get_parameter("arm_goal_tolerance_rad").value),
+            float(self.get_parameter("lift_goal_tolerance_m").value),
+            float(self.get_parameter("goal_time_tolerance_sec").value),
         )
         self.command_gate = self.composer.base
         self.base_frame = str(self.get_parameter("base_frame").value)
@@ -183,6 +194,9 @@ class AlohaMiniLeRobotBridge(Node):
             return False
         return self.robot_metadata.get("robot_model") == self.expected_model
 
+    def lift_ready_for_commands(self) -> bool:
+        return lift_command_ready(self.robot_metadata, self.latest_observation)
+
     def on_cmd_vel(self, message: Twist) -> None:
         if not self.command_gate.enabled:
             return
@@ -229,10 +243,14 @@ class AlohaMiniLeRobotBridge(Node):
                 return response
             # Re-enabling is also an epoch boundary. Stop an already-started
             # stream before discarding it, then wait for another new /cmd_vel.
-            if self.composer.disable():
-                self.transport.send_action(
-                    {"x.vel": 0.0, "y.vel": 0.0, "theta.vel": 0.0}
-                )
+            stop_action = self.composer.disable_action(
+                self.latest_positions,
+                self.robot_metadata or {},
+                self.observation_fresh(),
+            )
+            self.composer.disable()
+            if stop_action is not None:
+                self.transport.send_action(stop_action)
             self.composer.enable()
             response.success = True
             response.message = (
@@ -240,8 +258,14 @@ class AlohaMiniLeRobotBridge(Node):
                 "until it receives a new command"
             )
             return response
-        if self.composer.disable():
-            self.transport.send_action({"x.vel": 0.0, "y.vel": 0.0, "theta.vel": 0.0})
+        stop_action = self.composer.disable_action(
+            self.latest_positions,
+            self.robot_metadata or {},
+            self.observation_fresh(),
+        )
+        self.composer.disable()
+        if stop_action is not None:
+            self.transport.send_action(stop_action)
         response.success = True
         response.message = "ROS command channel disabled"
         return response
@@ -397,6 +421,11 @@ class AlohaMiniLeRobotBridge(Node):
         if self.require_model_match and not self.model_matches():
             self.get_logger().warning(f"Rejected {resource} goal: robot model mismatch")
             return GoalResponse.REJECT
+        if resource == "lift" and not self.lift_ready_for_commands():
+            self.get_logger().warning(
+                "Rejected lift goal: Host lift is not homed with torque enabled"
+            )
+            return GoalResponse.REJECT
         try:
             self.validate_trajectory_for_host(resource, goal)
         except (KeyError, TypeError, ValueError) as error:
@@ -467,11 +496,16 @@ class AlohaMiniLeRobotBridge(Node):
                     result.error_code = FollowJointTrajectory.Result.SUCCESSFUL
                 else:
                     goal_handle.abort()
-                    result.error_code = (
-                        FollowJointTrajectory.Result.PATH_TOLERANCE_VIOLATED
-                        if event.state in (TerminalState.ABORTED, TerminalState.STALE)
-                        else FollowJointTrajectory.Result.INVALID_GOAL
-                    )
+                    if event.state is TerminalState.GOAL_TOLERANCE:
+                        result.error_code = (
+                            FollowJointTrajectory.Result.GOAL_TOLERANCE_VIOLATED
+                        )
+                    elif event.state in (TerminalState.ABORTED, TerminalState.STALE):
+                        result.error_code = (
+                            FollowJointTrajectory.Result.PATH_TOLERANCE_VIOLATED
+                        )
+                    else:
+                        result.error_code = FollowJointTrajectory.Result.INVALID_GOAL
                 return result
             if self.observation_fresh():
                 goal_handle.publish_feedback(self.trajectory_feedback(resource))
@@ -497,6 +531,9 @@ class AlohaMiniLeRobotBridge(Node):
         elif self.require_model_match and not self.model_matches():
             status.level = DiagnosticStatus.ERROR
             status.message = "Host robot model mismatch"
+        elif not self.lift_ready_for_commands():
+            status.level = DiagnosticStatus.WARN
+            status.message = "Lift is not command-ready"
         elif self.composer.enabled:
             status.level = DiagnosticStatus.WARN
             status.message = "ROS command channel enabled"
@@ -511,6 +548,10 @@ class AlohaMiniLeRobotBridge(Node):
         status.values = [
             KeyValue(key="observation_age_sec", value=f"{age:.3f}"),
             KeyValue(key="host_robot_model", value=str(model)),
+            KeyValue(
+                key="lift_command_ready",
+                value=str(self.lift_ready_for_commands()).lower(),
+            ),
             KeyValue(
                 key="command_enabled", value=str(self.composer.enabled).lower()
             ),
@@ -539,8 +580,14 @@ class AlohaMiniLeRobotBridge(Node):
         self.diagnostics_pub.publish(array)
 
     def destroy_node(self) -> None:
-        if self.composer.disable():
-            self.transport.send_action({"x.vel": 0.0, "y.vel": 0.0, "theta.vel": 0.0})
+        stop_action = self.composer.disable_action(
+            self.latest_positions,
+            self.robot_metadata or {},
+            self.observation_fresh(),
+        )
+        self.composer.disable()
+        if stop_action is not None:
+            self.transport.send_action(stop_action)
         for server in self.action_servers:
             server.destroy()
         self.transport.close()

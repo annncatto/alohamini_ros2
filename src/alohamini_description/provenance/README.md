@@ -6,7 +6,7 @@ imported from:
 
 `/home/anncatto/RoboTwin/assets/embodiments/alohamini2pro`
 
-The MoveIt URDF, kinematic URDFs, TCP frames, conservative AABB/VHACD
+The MoveIt URDF, kinematic URDFs, TCP frames, initial conservative AABB/VHACD
 collision model, and plan-only configuration were imported from:
 
 `/home/anncatto/lerobot_alohamini`
@@ -23,6 +23,12 @@ overwrite it through reverse synchronization.
 The ROS camera-info candidates were imported from:
 
 `/home/anncatto/ManiSkill/outputs/alohamini2pro_fisheye_candidate`
+
+The initial arm AABBs were replaced in this ROS authority by same-frame VHACD
+collision meshes after the verified compact right-arm pose produced multiple
+false-positive non-adjacent contacts. Left/right CAD sources are byte-identical
+and share generated collision assets. The moving-jaw VHACD pieces remain in
+use. Parameters and generated-mesh hashes are recorded with the description.
 
 The wrist extrinsics candidate was imported from:
 

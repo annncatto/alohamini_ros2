@@ -1,11 +1,82 @@
 schema_version: 1
 robot_model: alohamini2pro
 side: left
+ticks_per_revolution: 4096
 
-# The upstream AlohaMini2Pro calibration was measured with one physical arm
-# and is intentionally shared by both installed sides. Keeping a second copied
-# set of ticks here would make obsolete left-side captures look authoritative
-# and allow the two sides to drift.
-inherits: hardware_joint_map_right.yaml
-calibration_source_side: right
-note: Left and right use the same single-arm measurement; only the logical side/prefix differs.
+# Installed left-arm encoder Home is bound to the corresponding collision-free
+# CAD Home.  These ticks are specific to this robot and its EEPROM offsets.
+joints:
+  shoulder_pan:
+    id: 1
+    model: sts3250
+    reference_tick: 2014
+    reference_q_rad: 0.0
+    sign: 1
+    safe_q_min_rad: -2.196660488252487
+    safe_q_max_rad: 2.208932334555513
+  shoulder_lift:
+    id: 2
+    model: sts3095
+    reference_tick: 917
+    reference_q_rad: 0.0
+    sign: -1
+    safe_q_min_rad: -3.505146100318774
+    safe_q_max_rad: 0.018407769454226
+  elbow_flex:
+    id: 3
+    model: sts3095
+    reference_tick: 3132
+    reference_q_rad: 0.0
+    sign: -1
+    safe_q_min_rad: -0.010737865514856
+    safe_q_max_rad: 3.258175193469144
+  wrist_flex:
+    id: 4
+    model: sts3250
+    reference_tick: 3025
+    reference_q_rad: 1.435806017460960
+    sign: 1
+    safe_q_min_rad: -1.776349752372000
+    safe_q_max_rad: 1.524776903158000
+  wrist_yaw:
+    id: 5
+    model: sts3250
+    reference_tick: 1986
+    reference_q_rad: 0.0
+    sign: 1
+    safe_q_min_rad: -1.437339998248976
+    safe_q_max_rad: 1.529378845522024
+  wrist_roll:
+    id: 6
+    model: sts3250
+    reference_tick: 2052
+    reference_q_rad: 0.0
+    sign: -1
+  gripper:
+    id: 7
+    model: sts3250
+    closed_tick: 2048
+    open_tick: 3432
+    reference_tick: 2048
+    reference_q_rad: 0.32
+    sign: -1
+    joint_per_encoder_ratio: 1.0
+    urdf_closed_rad: 0.32
+    urdf_open_rad: -1.8030294104
+
+reference_capture:
+  source: installed_left_arm_present_position_at_physical_folded_home
+  ticks: [2014, 917, 3132, 3025, 1986, 2052]
+  q_rad: [0.0, 0.0, 0.0, 1.435806017460960, 0.0, 0.0]
+  note: Operator-confirmed physical folded Home bound to the matching CAD Home.
+
+stowed_capture:
+  captured_at: "2026-08-17T11:46:11+09:00"
+  source: installed_left_arm_present_position_at_folded_home
+  device: /dev/ttyACM1
+  ticks: [2014, 917, 3132, 3025, 1986, 2052]
+
+gripper_reference:
+  status: retained_shared_nominal_closed_reference
+  reference_tick: 2048
+  reference_q_rad: 0.32

@@ -2,12 +2,13 @@
 <package format="3">
   <name>alohamini_moveit_config</name>
   <version>0.1.0</version>
-  <description>Plan-only MoveIt 2 configuration for AlohaMini2Pro.</description>
+  <description>MoveIt 2 planning and LeRobot bridge execution for AlohaMini2Pro.</description>
   <maintainer email="anncatto@users.noreply.github.com">anncatto</maintainer>
   <license>Apache-2.0</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
   <exec_depend>alohamini_description</exec_depend>
+  <exec_depend>alohamini_lerobot_bridge</exec_depend>
   <exec_depend>joint_state_publisher</exec_depend>
   <exec_depend>moveit_configs_utils</exec_depend>
   <exec_depend>moveit_kinematics</exec_depend>

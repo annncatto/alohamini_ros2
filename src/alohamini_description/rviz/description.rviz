@@ -15,7 +15,7 @@ Visualization Manager:
       Class: rviz_default_plugins/RobotModel
       Description Source: Topic
       Description Topic:
-        Value: /robot_description
+        Value: /alohamini/robot_description
       Name: AlohaMini
       Visual Enabled: true
       Collision Enabled: false
@@ -52,4 +52,3 @@ Visualization Manager:
 Window Geometry:
   Height: 900
   Width: 1400
-

@@ -56,6 +56,13 @@ sending so the Host watchdog remains authoritative. Cancel or preemption only
 latches a short measured-position hold while state is fresh. Excess tracking
 error aborts the trajectory instead of continuing to chase its target.
 
+Path and endpoint checks are separate. The default lift path tolerance is
+`0.03 m`; at nominal trajectory completion, measured error must be within
+`0.003 m`. Otherwise the controller holds the final requested setpoint for at
+most `1.0 s` before returning `GOAL_TOLERANCE_VIOLATED`. Lift goals additionally
+require the Host to report that resource as homed with torque enabled; other
+resources remain independently available.
+
 The Host paired with this control layer must accept either all three base
 velocity fields or none. This permits arm-only and lift-only frames without an
 implicit base target; partial base triples are rejected. The matching Host also

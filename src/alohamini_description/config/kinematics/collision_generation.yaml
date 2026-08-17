@@ -18,3 +18,28 @@ moving_jaw_vhacd:
     generated_six_piece_total: 32.85102427886363
   status: simulation_provisional
   note: Physical jaw geometry and safety clearance still require hardware comparison.
+
+arm_link_vhacd:
+  generator: ../../scripts/generate_arm_collision_meshes.py
+  environment: RoboTwin
+  report: arm_collision_report.json
+  left_right_sources_identical: true
+  output_glob: ../../meshes/collision/{arm_base,rotation_pitch,upper_arm,lower_arm,wrist_pitch_roll,wrist_yaw,fixed_jaw,wrist_camera}_vhacd.stl
+  common_parameters:
+    resolution: 100000
+    minimumVolumePercentErrorAllowed: 2.0
+    maxNumVerticesPerCH: 32
+  max_convex_hulls_by_link:
+    arm_base: 8
+    rotation_pitch: 6
+    upper_arm: 8
+    lower_arm: 8
+    wrist_pitch_roll: 4
+    wrist_yaw: 6
+    fixed_jaw: 8
+    wrist_camera: 2
+  status: generated_and_cad_home_reviewed
+  stowed_pose_policy:
+    source: ../../../alohamini_calibration/config/hardware/arm_home.yaml
+    note: Installed encoder Home is mapped to the matching collision-free CAD Home; no additional ACM exclusions are used.
+    srdf_false_positive_pairs: []

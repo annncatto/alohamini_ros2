@@ -85,10 +85,31 @@ class JointMapper:
     def __init__(
         self, calibration: dict[str, Any], lift_calibration: dict[str, Any] | None = None
     ) -> None:
-        self.period = int(calibration["ticks_per_revolution"])
-        self.joints = calibration["joints"]
+        if "ticks_per_revolution" in calibration:
+            calibrations = {side: calibration for side in ("left", "right")}
+        else:
+            calibrations = calibration
+        if set(calibrations) != {"left", "right"}:
+            raise ValueError("arm calibration must provide left and right mappings")
+        periods = {
+            int(calibrations[side]["ticks_per_revolution"])
+            for side in ("left", "right")
+        }
+        if len(periods) != 1:
+            raise ValueError("left/right ticks_per_revolution must match")
+        self.period = periods.pop()
+        self.joints_by_side = {
+            side: calibrations[side]["joints"] for side in ("left", "right")
+        }
+        self.joints = self.joints_by_side["right"]
         self.lift_calibration = lift_calibration
         self.previous: dict[str, float] = {}
+
+    def _entry(self, side: str, joint: str) -> dict[str, Any]:
+        try:
+            return self.joints_by_side[side][joint]
+        except KeyError as error:
+            raise ValueError(f"missing calibration for {side}_{joint}") from error
 
     def lift_height_to_urdf(self, height_mm: float) -> float:
         if not isinstance(self.lift_calibration, dict):
@@ -165,17 +186,38 @@ class JointMapper:
             return (tick - midpoint) * 360.0 / (self.period - 1)
         raise ValueError(f"Unsupported Host normalization: {mode!r}")
 
-    def tick_to_urdf(self, joint: str, tick: int, state_key: str) -> float:
-        entry = self.joints[joint]
+    def tick_to_urdf(
+        self, joint: str, tick: int, state_key: str, side: str | None = None
+    ) -> float:
+        parsed_side, parsed_joint = self._joint_from_urdf_name(state_key)
+        side = parsed_side if side is None else side
+        if parsed_side != side or parsed_joint != joint:
+            raise ValueError(f"state key {state_key} does not match {side}_{joint}")
+        entry = self._entry(side, joint)
         delta = signed_tick_delta(tick, int(entry["reference_tick"]), self.period)
         ratio = float(entry.get("joint_per_encoder_ratio", 1.0))
         value = (
             float(entry["reference_q_rad"])
             + int(entry["sign"]) * delta * 2.0 * math.pi / self.period * ratio
         )
-        if joint == "wrist_roll" and state_key in self.previous:
-            period_rad = 2.0 * math.pi * ratio
+        period_rad = 2.0 * math.pi * ratio
+        if state_key in self.previous:
             value += round((self.previous[state_key] - value) / period_rad) * period_rad
+        elif entry.get("safe_q_min_rad") is not None and entry.get("safe_q_max_rad") is not None:
+            # Several calibrated arm ranges cross the encoder's periodic
+            # branch.  On the first observation choose the unique equivalent
+            # angle inside the installed robot's calibrated URDF interval;
+            # subsequent samples remain continuous relative to the last state.
+            lower = float(entry["safe_q_min_rad"])
+            upper = float(entry["safe_q_max_rad"])
+            midpoint = (lower + upper) / 2.0
+            candidates = [
+                value + turns * period_rad
+                for turns in range(-2, 3)
+                if lower <= value + turns * period_rad <= upper
+            ]
+            if candidates:
+                value = min(candidates, key=lambda candidate: abs(candidate - midpoint))
         self.previous[state_key] = value
         return value
 
@@ -192,9 +234,8 @@ class JointMapper:
     def urdf_to_lerobot(
         self, urdf_name: str, position: float, metadata: dict[str, Any]
     ) -> tuple[str, float]:
-        """Return the Host action key/value for one URDF arm joint."""
         side, joint = self._joint_from_urdf_name(urdf_name)
-        entry = self.joints[joint]
+        entry = self._entry(side, joint)
         q = finite_number(position, urdf_name)
         calibrated_limits = [
             float(entry[key])
@@ -227,6 +268,13 @@ class JointMapper:
         motor_metadata = metadata.get("motors", {}).get(motor_name)
         if not isinstance(motor_metadata, dict):
             raise ValueError(f"Host metadata lacks {motor_name}")
+        range_min = int(motor_metadata["range_min"])
+        range_max = int(motor_metadata["range_max"])
+        if tick < range_min or tick > range_max:
+            raise ValueError(
+                f"{urdf_name} maps to tick {tick}, outside Host range "
+                f"[{range_min}, {range_max}]"
+            )
         return f"{motor_name}.pos", self.tick_to_lerobot(tick, motor_metadata)
 
     def observation_to_joint_positions(
@@ -248,7 +296,9 @@ class JointMapper:
                 )
                 suffix = "wrist_yaw_joint" if joint == "wrist_yaw" else joint
                 urdf_name = f"{side}_{suffix}"
-                positions[urdf_name] = self.tick_to_urdf(joint, tick, urdf_name)
+                positions[urdf_name] = self.tick_to_urdf(
+                    joint, tick, urdf_name, side=side
+                )
         if "lift_axis.height_mm" in observation:
             positions["vertical_move"] = self.lift_height_to_urdf(
                 float(observation["lift_axis.height_mm"])
@@ -263,6 +313,28 @@ def finite_number(value: Any, field: str) -> float:
     if not math.isfinite(result):
         raise ValueError(f"{field} must be finite")
     return result
+
+
+def lift_command_ready(
+    metadata: dict[str, Any] | None, observation: dict[str, Any] | None
+) -> bool:
+    """Accept explicit lifecycle flags or the verified legacy Host height signal."""
+    if not isinstance(metadata, dict):
+        return False
+    if "lift_axis" not in metadata:
+        return True
+    if not isinstance(observation, dict):
+        return False
+    if "lift_axis.homed" in observation or "lift_axis.torque_enabled" in observation:
+        return bool(
+            observation.get("lift_axis.homed") is True
+            and observation.get("lift_axis.torque_enabled") is True
+        )
+    try:
+        finite_number(observation.get("lift_axis.height_mm"), "lift_axis.height_mm")
+    except ValueError:
+        return False
+    return True
 
 
 def validate_state_observation(

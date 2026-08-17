@@ -16,11 +16,19 @@ def generate_launch_description() -> LaunchDescription:
     use_rviz = LaunchConfiguration("use_rviz")
 
     home = {
-        "zeros.left_shoulder_lift": -1.571,
-        "zeros.left_elbow_flex": 1.571,
-        "zeros.right_shoulder_lift": -1.571,
-        "zeros.right_elbow_flex": 1.571,
+        "zeros.left_shoulder_pan": 0.0,
+        "zeros.left_shoulder_lift": 0.0,
+        "zeros.left_elbow_flex": 0.0,
+        "zeros.left_wrist_flex": 1.435806017460960,
+        "zeros.left_wrist_yaw_joint": 0.0,
+        "zeros.left_wrist_roll": 0.0,
         "zeros.left_gripper": 0.32,
+        "zeros.right_shoulder_pan": 0.0,
+        "zeros.right_shoulder_lift": 0.0,
+        "zeros.right_elbow_flex": 0.0,
+        "zeros.right_wrist_flex": 1.5,
+        "zeros.right_wrist_yaw_joint": 0.0,
+        "zeros.right_wrist_roll": 0.0,
         "zeros.right_gripper": 0.32,
     }
     return LaunchDescription(
@@ -30,20 +38,29 @@ def generate_launch_description() -> LaunchDescription:
             Node(
                 package="robot_state_publisher",
                 executable="robot_state_publisher",
+                name="alohamini_view_robot_state_publisher",
                 parameters=[{"robot_description": robot_description}],
+                remappings=[
+                    ("robot_description", "/alohamini/robot_description"),
+                    ("joint_states", "/alohamini_view/joint_states"),
+                ],
                 output="screen",
             ),
             Node(
                 package="joint_state_publisher_gui",
                 executable="joint_state_publisher_gui",
+                name="alohamini_view_joint_state_publisher_gui",
                 parameters=[{"robot_description": robot_description}, home],
+                remappings=[("joint_states", "/alohamini_view/joint_states")],
                 condition=IfCondition(use_gui),
                 output="screen",
             ),
             Node(
                 package="joint_state_publisher",
                 executable="joint_state_publisher",
+                name="alohamini_view_joint_state_publisher",
                 parameters=[{"robot_description": robot_description}, home],
+                remappings=[("joint_states", "/alohamini_view/joint_states")],
                 condition=UnlessCondition(use_gui),
                 output="screen",
             ),

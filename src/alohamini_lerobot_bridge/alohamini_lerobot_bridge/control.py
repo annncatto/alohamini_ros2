@@ -27,6 +27,7 @@ class TerminalState(Enum):
     CANCELED = "canceled"
     PREEMPTED = "preempted"
     ABORTED = "aborted"
+    GOAL_TOLERANCE = "goal_tolerance"
     STALE = "stale"
 
 
@@ -51,14 +52,27 @@ class TrajectoryResource:
         name: str,
         joints: Iterable[str],
         tracking_error: float,
+        goal_tolerance: float,
+        goal_time_tolerance: float,
         hold_duration: float,
     ) -> None:
         self.name = name
         self.joints = tuple(joints)
         self.tracking_error = float(tracking_error)
+        self.goal_tolerance = float(goal_tolerance)
+        self.goal_time_tolerance = float(goal_time_tolerance)
         self.hold_duration = float(hold_duration)
         if not math.isfinite(self.tracking_error) or self.tracking_error <= 0.0:
             raise ValueError(f"{name} tracking_error must be finite and positive")
+        if not math.isfinite(self.goal_tolerance) or self.goal_tolerance <= 0.0:
+            raise ValueError(f"{name} goal_tolerance must be finite and positive")
+        if (
+            not math.isfinite(self.goal_time_tolerance)
+            or self.goal_time_tolerance < 0.0
+        ):
+            raise ValueError(
+                f"{name} goal_time_tolerance must be finite and non-negative"
+            )
         if not math.isfinite(self.hold_duration) or self.hold_duration < 0.0:
             raise ValueError(f"{name} hold_duration must be finite and non-negative")
         self.goal_id = 0
@@ -207,15 +221,29 @@ class TrajectoryResource:
                 )
                 return dict(self.hold_positions) if self.hold_positions else None
             self.desired = desired
-            if now - self.start_time >= self.samples[-1].time_from_start:
-                goal_id = self.active_goal_id
-                self.terminals[goal_id] = TerminalEvent(
-                    goal_id, TerminalState.SUCCEEDED, "trajectory completed"
-                )
-                self.active_goal_id = None
-                self.samples = ()
-                self.hold_positions = desired
-                self.hold_until = now + self.hold_duration
+            elapsed = now - self.start_time
+            end_time = self.samples[-1].time_from_start
+            if elapsed >= end_time:
+                if error <= self.goal_tolerance:
+                    goal_id = self.active_goal_id
+                    self.terminals[goal_id] = TerminalEvent(
+                        goal_id,
+                        TerminalState.SUCCEEDED,
+                        f"goal reached with error {error:.6f}",
+                    )
+                    self.active_goal_id = None
+                    self.samples = ()
+                    self.hold_positions = desired
+                    self.hold_until = now + self.hold_duration
+                elif elapsed > end_time + self.goal_time_tolerance:
+                    self._finish(
+                        TerminalState.GOAL_TOLERANCE,
+                        f"goal error {error:.6f} exceeds {self.goal_tolerance:.6f} "
+                        f"after {self.goal_time_tolerance:.3f}s grace period",
+                        measured,
+                        now,
+                    )
+                    return dict(self.hold_positions) if self.hold_positions else None
             return desired
         if self.hold_positions is not None:
             if now <= self.hold_until:
@@ -234,6 +262,9 @@ class CommandComposer:
         arm_tracking_error: float,
         lift_tracking_error: float,
         hold_duration: float,
+        arm_goal_tolerance: float = 0.03,
+        lift_goal_tolerance: float = 0.003,
+        goal_time_tolerance: float = 1.0,
     ) -> None:
         self.mapper = mapper
         self.command_timeout = float(command_timeout)
@@ -242,13 +273,28 @@ class CommandComposer:
         self.base = CommandGate()
         self.resources = {
             "left_arm": TrajectoryResource(
-                "left_arm", LEFT_ARM_JOINTS, arm_tracking_error, hold_duration
+                "left_arm",
+                LEFT_ARM_JOINTS,
+                arm_tracking_error,
+                arm_goal_tolerance,
+                goal_time_tolerance,
+                hold_duration,
             ),
             "right_arm": TrajectoryResource(
-                "right_arm", RIGHT_ARM_JOINTS, arm_tracking_error, hold_duration
+                "right_arm",
+                RIGHT_ARM_JOINTS,
+                arm_tracking_error,
+                arm_goal_tolerance,
+                goal_time_tolerance,
+                hold_duration,
             ),
             "lift": TrajectoryResource(
-                "lift", LIFT_JOINTS, lift_tracking_error, hold_duration
+                "lift",
+                LIFT_JOINTS,
+                lift_tracking_error,
+                lift_goal_tolerance,
+                goal_time_tolerance,
+                hold_duration,
             ),
         }
         self.enabled = False
@@ -283,6 +329,35 @@ class CommandComposer:
                     hold=False,
                 )
             return should_stop
+
+    def disable_action(
+        self,
+        measured: dict[str, float],
+        metadata: dict,
+        fresh: bool,
+    ) -> dict[str, float] | None:
+        """Build one final stop frame without inventing targets from stale state."""
+        with self.lock:
+            if not self.enabled or not self.ever_commanded:
+                return None
+            action = {"x.vel": 0.0, "y.vel": 0.0, "theta.vel": 0.0}
+            if not fresh:
+                return action
+            try:
+                for name, resource in self.resources.items():
+                    if not resource.active:
+                        continue
+                    if name == "lift":
+                        action["lift_axis.vel"] = 0.0
+                        continue
+                    for joint in resource.joints:
+                        key, value = self.mapper.urdf_to_lerobot(
+                            joint, measured[joint], metadata
+                        )
+                        action[key] = value
+            except (KeyError, TypeError, ValueError, OverflowError):
+                return {"x.vel": 0.0, "y.vel": 0.0, "theta.vel": 0.0}
+            return action
 
     def accept_base(self, velocity: BodyVelocity, now: float | None = None) -> bool:
         with self.lock:
@@ -396,5 +471,12 @@ class CommandComposer:
                 return None
             if not action:
                 return None
+            # The verified LeRobot Host currently parses x/y/theta as a required
+            # command envelope even for arm-only and lift-only actions.  Preserve
+            # independent ROS resources while supplying an explicit stopped base
+            # whenever no live base command exists.
+            action.setdefault("x.vel", 0.0)
+            action.setdefault("y.vel", 0.0)
+            action.setdefault("theta.vel", 0.0)
             self.ever_commanded = True
             return action

@@ -11,6 +11,7 @@ from alohamini_lerobot_bridge.protocol import (
     CommandGate,
     JointMapper,
     ZmqHostTransport,
+    lift_command_ready,
     validate_state_observation,
     wheel_velocity_from_body,
 )
@@ -55,6 +56,112 @@ def test_host_normalization_to_reference_urdf():
     assert mapper.lerobot_to_tick(normalized, metadata) == pytest.approx(2027, abs=1)
 
 
+def test_independent_side_references_route_observation_and_command():
+    joint = {
+        "reference_q_rad": 0.0,
+        "sign": 1,
+        "safe_q_min_rad": -1.0,
+        "safe_q_max_rad": 1.0,
+    }
+    mapper = JointMapper(
+        {
+            "left": {
+                "ticks_per_revolution": 4096,
+                "joints": {"shoulder_pan": {**joint, "reference_tick": 2014}},
+            },
+            "right": {
+                "ticks_per_revolution": 4096,
+                "joints": {"shoulder_pan": {**joint, "reference_tick": 2041}},
+            },
+        }
+    )
+    motors = {
+        f"arm_{side}_shoulder_pan": {
+            "range_min": 500,
+            "range_max": 3500,
+            "drive_mode": 0,
+            "normalization": "degrees",
+        }
+        for side in ("left", "right")
+    }
+    metadata = {"motors": motors}
+    observation = {
+        f"arm_{side}_shoulder_pan.pos": mapper.tick_to_lerobot(
+            tick, motors[f"arm_{side}_shoulder_pan"]
+        )
+        for side, tick in (("left", 2014), ("right", 2041))
+    }
+
+    positions = mapper.observation_to_joint_positions(observation, metadata)
+
+    assert positions["left_shoulder_pan"] == pytest.approx(0.0, abs=0.002)
+    assert positions["right_shoulder_pan"] == pytest.approx(0.0, abs=0.002)
+    for side, expected_tick in (("left", 2014), ("right", 2041)):
+        key, value = mapper.urdf_to_lerobot(
+            f"{side}_shoulder_pan", 0.0, metadata
+        )
+        assert key == f"arm_{side}_shoulder_pan.pos"
+        assert mapper.lerobot_to_tick(value, motors[key.removesuffix(".pos")]) == pytest.approx(
+            expected_tick, abs=1
+        )
+
+
+def test_command_mapping_rejects_tick_outside_side_host_range():
+    calibration = {
+        "ticks_per_revolution": 4096,
+        "joints": {
+            "shoulder_pan": {
+                "reference_tick": 2041,
+                "reference_q_rad": 0.0,
+                "sign": 1,
+                "safe_q_min_rad": -2.0,
+                "safe_q_max_rad": 2.0,
+            }
+        },
+    }
+    mapper = JointMapper(calibration)
+    metadata = {
+        "motors": {
+            "arm_right_shoulder_pan": {
+                "range_min": 2000,
+                "range_max": 2100,
+                "drive_mode": 0,
+                "normalization": "degrees",
+            }
+        }
+    }
+
+    with pytest.raises(ValueError, match="outside Host range"):
+        mapper.urdf_to_lerobot("right_shoulder_pan", 0.5, metadata)
+
+
+def test_first_observation_selects_calibrated_periodic_branch():
+    mapper = JointMapper(
+        {
+            "ticks_per_revolution": 4096,
+            "joints": {
+                "shoulder_lift": {
+                    "reference_tick": 969,
+                    "reference_q_rad": -1.571,
+                    "sign": -1,
+                    "safe_q_min_rad": -5.0532,
+                    "safe_q_max_rad": -1.5617,
+                }
+            },
+        }
+    )
+
+    # The far range endpoint crosses the 0/4095 branch.  A fresh bridge must
+    # report the equivalent angle inside the calibrated URDF interval rather
+    # than jumping to the +1.2 rad periodic representation.
+    value = mapper.tick_to_urdf(
+        "shoulder_lift", 3239, "right_shoulder_lift"
+    )
+
+    assert -5.0532 <= value <= -1.5617
+    assert value == pytest.approx(-5.0531363885, abs=2e-4)
+
+
 def test_lift_physical_endpoints_map_to_urdf_limits():
     mapper = JointMapper(
         {"ticks_per_revolution": 4096, "joints": {}},
@@ -97,6 +204,29 @@ def test_command_gate_stops_only_after_its_stream_started():
     gate.accept(BodyVelocity(y=0.1), now=1.0)
     assert gate.resolve(permitted=True, timeout_sec=0.5, now=1.6) == BodyVelocity()
     assert gate.disable()
+
+
+def test_lift_readiness_accepts_legacy_height_and_prefers_explicit_flags():
+    metadata = {"lift_axis": {"soft_min_mm": 0.0, "soft_max_mm": 600.0}}
+
+    assert lift_command_ready(metadata, {"lift_axis.height_mm": 300.0})
+    assert not lift_command_ready(metadata, {"lift_axis.height_mm": math.nan})
+    assert lift_command_ready(
+        metadata,
+        {
+            "lift_axis.height_mm": 300.0,
+            "lift_axis.homed": True,
+            "lift_axis.torque_enabled": True,
+        },
+    )
+    assert not lift_command_ready(
+        metadata,
+        {
+            "lift_axis.height_mm": 300.0,
+            "lift_axis.homed": False,
+            "lift_axis.torque_enabled": True,
+        },
+    )
 
 
 def _validator_fixture():

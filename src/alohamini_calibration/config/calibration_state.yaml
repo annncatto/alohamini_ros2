@@ -5,9 +5,11 @@ authority: alohamini_calibration
 hardware:
   encoder_tick_rad_direction: hardware_test_corrected
   shoulder_pan_correction_source: live_state_rviz_comparison_2026_08_13
-  wrist_yaw_center_source: both_installed_arms_raw_tick_2047_2026_08_14
+  wrist_yaw_center_source: verified_cad_mapping_reference_2026_08_14
   lift_axis_mapping_source: homed_encoder_multi_point_capture_2026_08_14
-  left_arm_mapping: inherits_single_measured_right_mapping
+  left_arm_mapping: independent_installed_arm_home_capture
+  right_arm_mapping: independent_installed_arm_home_capture
+  folded_home_state: installed_ticks_bound_to_collision_free_cad_home_2026_08_17
   gripper_mapping: provisional_not_calibrated
 
 cameras:

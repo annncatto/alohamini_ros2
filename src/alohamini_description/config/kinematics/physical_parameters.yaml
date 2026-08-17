@@ -50,5 +50,7 @@ known_issues:
 collision:
   visual_meshes_may_be_used_as_collision: true
   simplified_collision_complete: false
-  wrist_camera_envelope: box
+  arm_collision_profile: shared_symmetric_vhacd
+  arm_collision_mesh_origin_matches_visual: true
+  wrist_camera_envelope: vhacd
   calibrated: false

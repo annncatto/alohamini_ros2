@@ -41,7 +41,7 @@
       <geometry>
         <mesh filename="package://alohamini_description/meshes/visual/base_link.STL" />
       </geometry>
-      <material name="">
+      <material name="cad_gray">
         <color rgba="0.752941176470588 0.752941176470588 0.752941176470588 1" />
       </material>
     </visual>
@@ -63,7 +63,7 @@
       <geometry>
         <mesh filename="package://alohamini_description/meshes/visual/vertical_link.STL" />
       </geometry>
-      <material name="">
+      <material name="cad_gray">
         <color rgba="0.752941176470588 0.752941176470588 0.752941176470588 1" />
       </material>
     </visual>
@@ -92,7 +92,7 @@
       <geometry>
         <mesh filename="package://alohamini_description/meshes/visual/chest_camera.STL" />
       </geometry>
-      <material name="">
+      <material name="cad_gray">
         <color rgba="0.752941176470588 0.752941176470588 0.752941176470588 1" />
       </material>
     </visual>
@@ -120,7 +120,7 @@
       <geometry>
         <mesh filename="package://alohamini_description/meshes/visual/Link2_dp.STL" />
       </geometry>
-      <material name="">
+      <material name="cad_gray">
         <color rgba="0.752941176470588 0.752941176470588 0.752941176470588 1" />
       </material>
     </visual>
@@ -148,7 +148,7 @@
       <geometry>
         <mesh filename="package://alohamini_description/meshes/visual/Link3_dp.STL" />
       </geometry>
-      <material name=""><color rgba="0.752941176470588 0.752941176470588 0.752941176470588 1" /></material>
+      <material name="cad_gray"><color rgba="0.752941176470588 0.752941176470588 0.752941176470588 1" /></material>
     </visual>
     <collision>
       <origin xyz="3.72529029846e-09 0 0.0254999993271" rpy="0 0 0" />
@@ -174,7 +174,7 @@
       <geometry>
         <mesh filename="package://alohamini_description/meshes/visual/Link4_dp.STL" />
       </geometry>
-      <material name=""><color rgba="0.752941176470588 0.752941176470588 0.752941176470588 1" /></material>
+      <material name="cad_gray"><color rgba="0.752941176470588 0.752941176470588 0.752941176470588 1" /></material>
     </visual>
     <collision>
       <origin xyz="0 0 0.0254999996675" rpy="0 0 0" />
@@ -200,7 +200,7 @@
       <geometry>
         <mesh filename="package://alohamini_description/meshes/visual/back_camera.STL" />
       </geometry>
-      <material name="">
+      <material name="cad_gray">
         <color rgba="0.752941176470588 0.752941176470588 0.752941176470588 1" />
       </material>
     </visual>
@@ -228,7 +228,7 @@
       <geometry>
         <mesh filename="package://alohamini_description/meshes/visual/front_camera.STL" />
       </geometry>
-      <material name="">
+      <material name="cad_gray">
         <color rgba="0.752941176470588 0.752941176470588 0.752941176470588 1" />
       </material>
     </visual>
@@ -259,9 +259,9 @@
       <material name="white" />
     </visual>
     <collision>
-      <origin xyz="3.72529029846e-09 0.010265013203 0.0379505007944" rpy="0 0 0" />
+      <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <box size="0.142581313193 0.104563395768 0.0799010017949" />
+        <mesh filename="package://alohamini_description/meshes/collision/arm_base_vhacd.stl" />
       </geometry>
     </collision>
   </link>
@@ -281,14 +281,14 @@
       <geometry>
         <mesh filename="package://alohamini_description/meshes/visual/left_Rotation_Pitch.STL" />
       </geometry>
-      <material name="">
+      <material name="cad_gray">
         <color rgba="0.752941176470588 0.752941176470588 0.752941176470588 1" />
       </material>
     </visual>
     <collision>
-      <origin xyz="0.00211856514215 -0.015533965081 0.0282797869295" rpy="0 0 0" />
+      <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <box size="0.0740996890664 0.0968670763969 0.0956854776442" />
+        <mesh filename="package://alohamini_description/meshes/collision/rotation_pitch_vhacd.stl" />
       </geometry>
     </collision>
   </link>
@@ -297,7 +297,7 @@
     <parent link="left_Base" />
     <child link="left_Rotation_Pitch" />
     <axis xyz="0 0 -1" />
-    <limit lower="-2.23961195031" upper="2.13376727595" effort="1.57" velocity="4.2" />
+    <limit lower="-2.196660488252487" upper="2.208932334555513" effort="1.57" velocity="4.2" />
   </joint>
   <link name="left_Upper_Arm">
     <inertial>
@@ -310,14 +310,14 @@
       <geometry>
         <mesh filename="package://alohamini_description/meshes/visual/left_Upper_Arm.STL" />
       </geometry>
-      <material name="">
+      <material name="cad_gray">
         <color rgba="0.752941176470588 0.752941176470588 0.752941176470588 1" />
       </material>
     </visual>
     <collision>
-      <origin xyz="-0.0210603829473 0.06801478751 0.00333702936769" rpy="0 0 0" />
+      <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <box size="0.076020765394 0.176580149025 0.107688701987" />
+        <mesh filename="package://alohamini_description/meshes/collision/upper_arm_vhacd.stl" />
       </geometry>
     </collision>
   </link>
@@ -326,7 +326,7 @@
     <parent link="left_Rotation_Pitch" />
     <child link="left_Upper_Arm" />
     <axis xyz="0 0 -1" />
-    <limit lower="-3.29519440558" upper="0.160864309523" effort="2.21" velocity="2.48" />
+    <limit lower="-3.505146100318774" upper="0.018407769454226" effort="2.21" velocity="2.48" />
   </joint>
   <link name="left_Lower_Arm">
     <inertial>
@@ -339,14 +339,14 @@
       <geometry>
         <mesh filename="package://alohamini_description/meshes/visual/left_Lower_Arm.STL" />
       </geometry>
-      <material name="">
+      <material name="cad_gray">
         <color rgba="0.752941176470588 0.752941176470588 0.752941176470588 1" />
       </material>
     </visual>
     <collision>
-      <origin xyz="0.00283614080399 -0.0951335467398 0.00148415565491" rpy="0 0 0" />
+      <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <box size="0.0395722811073 0.23080991143 0.107798888624" />
+        <mesh filename="package://alohamini_description/meshes/collision/lower_arm_vhacd.stl" />
       </geometry>
     </collision>
   </link>
@@ -355,7 +355,7 @@
     <parent link="left_Upper_Arm" />
     <child link="left_Lower_Arm" />
     <axis xyz="0 0 -1" />
-    <limit lower="-0.0703594430376" upper="3.22002934698" effort="2.21" velocity="2.48" />
+    <limit lower="-0.010737865514856" upper="3.258175193469144" effort="2.21" velocity="2.48" />
   </joint>
   <link name="left_Wrist_Pitch_Roll">
     <inertial>
@@ -368,14 +368,14 @@
       <geometry>
         <mesh filename="package://alohamini_description/meshes/visual/left_Wrist_Pitch_Roll.STL" />
       </geometry>
-      <material name="">
+      <material name="cad_gray">
         <color rgba="0.752941176470588 0.752941176470588 0.752941176470588 1" />
       </material>
     </visual>
     <collision>
-      <origin xyz="-4.65661287308e-08 -0.0123669351451 -0.000100039876997" rpy="0 0 0" />
+      <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <box size="0.0352421917915 0.0599290731326 0.0601445560306" />
+        <mesh filename="package://alohamini_description/meshes/collision/wrist_pitch_roll_vhacd.stl" />
       </geometry>
     </collision>
   </link>
@@ -384,7 +384,7 @@
     <parent link="left_Lower_Arm" />
     <child link="left_Wrist_Pitch_Roll" />
     <axis xyz="0 0 1" />
-    <limit lower="-1.6459613854" upper="1.48335942189" effort="1.57" velocity="4.2" />
+    <limit lower="-1.776349752372000" upper="1.524776903158000" effort="1.57" velocity="4.2" />
   </joint>
   <link name="left_wrist_yaw">
     <inertial>
@@ -397,14 +397,14 @@
       <geometry>
         <mesh filename="package://alohamini_description/meshes/visual/left_wrist_yaw.STL" />
       </geometry>
-      <material name="">
+      <material name="cad_gray">
         <color rgba="0.752941176470588 0.752941176470588 0.752941176470588 1" />
       </material>
     </visual>
     <collision>
-      <origin xyz="-0.000186959281564 0.0232709660195 0.00918008573353" rpy="0 0 0" />
+      <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <box size="0.048816378504 0.0794570709541 0.107314373642" />
+        <mesh filename="package://alohamini_description/meshes/collision/wrist_yaw_vhacd.stl" />
       </geometry>
     </collision>
   </link>
@@ -413,7 +413,7 @@
     <parent link="left_Wrist_Pitch_Roll" />
     <child link="left_wrist_yaw" />
     <axis xyz="0 0 -1" />
-    <limit lower="-0.978679742671" upper="1.45881572928" effort="1.57" velocity="4.2" />
+    <limit lower="-1.437339998248976" upper="1.529378845522024" effort="1.57" velocity="4.2" />
   </joint>
   <link name="left_Fixed_Jaw">
     <inertial>
@@ -426,20 +426,14 @@
       <geometry>
         <mesh filename="package://alohamini_description/meshes/visual/left_Fixed_Jaw.STL" />
       </geometry>
-      <material name="">
+      <material name="cad_gray">
         <color rgba="0.752941176470588 0.752941176470588 0.752941176470588 1" />
       </material>
     </visual>
-    <collision name="left_fixed_jaw_palm">
-      <origin xyz="-0.0025 0.002 0.011" rpy="0 0 0" />
+    <collision name="left_fixed_jaw_cad">
+      <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <box size="0.065 0.052 0.058" />
-      </geometry>
-    </collision>
-    <collision name="left_fixed_finger_pad">
-      <origin xyz="-0.019 0 0.072" rpy="0 0 0" />
-      <geometry>
-        <box size="0.010 0.014 0.064" />
+        <mesh filename="package://alohamini_description/meshes/collision/fixed_jaw_vhacd.stl" />
       </geometry>
     </collision>
   </link>
@@ -461,7 +455,7 @@
       <geometry>
         <mesh filename="package://alohamini_description/meshes/visual/left_Moving_Jaw.STL" />
       </geometry>
-      <material name="">
+      <material name="cad_gray">
         <color rgba="0.752941176470588 0.752941176470588 0.752941176470588 1" />
       </material>
     </visual>
@@ -514,14 +508,14 @@
       <geometry>
         <mesh filename="package://alohamini_description/meshes/visual/left_camera.STL" />
       </geometry>
-      <material name="">
+      <material name="cad_gray">
         <color rgba="0.752941176470588 0.752941176470588 0.752941176470588 1" />
       </material>
     </visual>
     <collision>
-      <origin xyz="0 0 0.00955467" rpy="0 0 0" />
+      <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <box size="0.036 0.0369683 0.0191091" />
+        <mesh filename="package://alohamini_description/meshes/collision/wrist_camera_vhacd.stl" />
       </geometry>
     </collision>
   </link>
@@ -545,9 +539,9 @@
       <material name="white" />
     </visual>
     <collision>
-      <origin xyz="3.72529029846e-09 0.010265013203 0.0379505007944" rpy="0 0 0" />
+      <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <box size="0.142581313193 0.104563395768 0.0799010017949" />
+        <mesh filename="package://alohamini_description/meshes/collision/arm_base_vhacd.stl" />
       </geometry>
     </collision>
   </link>
@@ -567,14 +561,14 @@
       <geometry>
         <mesh filename="package://alohamini_description/meshes/visual/right_Rotation_Pitch.STL" />
       </geometry>
-      <material name="">
+      <material name="cad_gray">
         <color rgba="0.752941176470588 0.752941176470588 0.752941176470588 1" />
       </material>
     </visual>
     <collision>
-      <origin xyz="0.00211856514215 -0.015533965081 0.0282797869295" rpy="0 0 0" />
+      <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <box size="0.0740996890664 0.0968670763969 0.0956854776442" />
+        <mesh filename="package://alohamini_description/meshes/collision/rotation_pitch_vhacd.stl" />
       </geometry>
     </collision>
   </link>
@@ -583,7 +577,7 @@
     <parent link="right_Base" />
     <child link="right_Rotation_Pitch" />
     <axis xyz="0 0 -1" />
-    <limit lower="-2.23961195031" upper="2.13376727595" effort="1.57" velocity="4.2" />
+    <limit lower="-2.219670200070399" upper="2.184388641949601" effort="1.57" velocity="4.2" />
   </joint>
   <link name="right_Upper_Arm">
     <inertial>
@@ -596,14 +590,14 @@
       <geometry>
         <mesh filename="package://alohamini_description/meshes/visual/right_Upper_Arm.STL" />
       </geometry>
-      <material name="">
+      <material name="cad_gray">
         <color rgba="0.752941176470588 0.752941176470588 0.752941176470588 1" />
       </material>
     </visual>
     <collision>
-      <origin xyz="-0.0210603829473 0.06801478751 0.00333702936769" rpy="0 0 0" />
+      <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <box size="0.076020765394 0.176580149025 0.107688701987" />
+        <mesh filename="package://alohamini_description/meshes/collision/upper_arm_vhacd.stl" />
       </geometry>
     </collision>
   </link>
@@ -612,7 +606,7 @@
     <parent link="right_Rotation_Pitch" />
     <child link="right_Upper_Arm" />
     <axis xyz="0 0 -1" />
-    <limit lower="-3.29519440558" upper="0.160864309523" effort="2.21" velocity="2.48" />
+    <limit lower="-3.482136388500722" upper="0.009203884727279" effort="2.21" velocity="2.48" />
   </joint>
   <link name="right_Lower_Arm">
     <inertial>
@@ -625,14 +619,14 @@
       <geometry>
         <mesh filename="package://alohamini_description/meshes/visual/right_Lower_Arm.STL" />
       </geometry>
-      <material name="">
+      <material name="cad_gray">
         <color rgba="0.752941176470588 0.752941176470588 0.752941176470588 1" />
       </material>
     </visual>
     <collision>
-      <origin xyz="0.00283614080399 -0.0951335467398 0.00148415565491" rpy="0 0 0" />
+      <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <box size="0.0395722811073 0.23080991143 0.107798888624" />
+        <mesh filename="package://alohamini_description/meshes/collision/lower_arm_vhacd.stl" />
       </geometry>
     </collision>
   </link>
@@ -641,7 +635,7 @@
     <parent link="right_Upper_Arm" />
     <child link="right_Lower_Arm" />
     <axis xyz="0 0 -1" />
-    <limit lower="-0.0703594430376" upper="3.22002934698" effort="2.21" velocity="2.48" />
+    <limit lower="-0.012271846303223" upper="3.330272290499778" effort="2.21" velocity="2.48" />
   </joint>
   <link name="right_Wrist_Pitch_Roll">
     <inertial>
@@ -654,14 +648,14 @@
       <geometry>
         <mesh filename="package://alohamini_description/meshes/visual/right_Wrist_Pitch_Roll.STL" />
       </geometry>
-      <material name="">
+      <material name="cad_gray">
         <color rgba="0.752941176470588 0.752941176470588 0.752941176470588 1" />
       </material>
     </visual>
     <collision>
-      <origin xyz="-4.65661287308e-08 -0.0123669351451 -0.000100039876997" rpy="0 0 0" />
+      <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <box size="0.0352421917915 0.0599290731326 0.0601445560306" />
+        <mesh filename="package://alohamini_description/meshes/collision/wrist_pitch_roll_vhacd.stl" />
       </geometry>
     </collision>
   </link>
@@ -670,7 +664,7 @@
     <parent link="right_Lower_Arm" />
     <child link="right_Wrist_Pitch_Roll" />
     <axis xyz="0 0 1" />
-    <limit lower="-1.6459613854" upper="1.48335942189" effort="1.57" velocity="4.2" />
+    <limit lower="-1.669204307772067" upper="1.582834962545933" effort="1.57" velocity="4.2" />
   </joint>
   <link name="right_wrist_yaw">
     <inertial>
@@ -683,14 +677,14 @@
       <geometry>
         <mesh filename="package://alohamini_description/meshes/visual/right_wrist_yaw.STL" />
       </geometry>
-      <material name="">
+      <material name="cad_gray">
         <color rgba="0.752941176470588 0.752941176470588 0.752941176470588 1" />
       </material>
     </visual>
     <collision>
-      <origin xyz="-0.000186959281564 0.0232709660195 0.00918008573353" rpy="0 0 0" />
+      <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <box size="0.048816378504 0.0794570709541 0.107314373642" />
+        <mesh filename="package://alohamini_description/meshes/collision/wrist_yaw_vhacd.stl" />
       </geometry>
     </collision>
   </link>
@@ -699,7 +693,7 @@
     <parent link="right_Wrist_Pitch_Roll" />
     <child link="right_wrist_yaw" />
     <axis xyz="0 0 -1" />
-    <limit lower="-0.978679742671" upper="1.45881572928" effort="1.57" velocity="4.2" />
+    <limit lower="-1.477223498733657" upper="1.475689517946343" effort="1.57" velocity="4.2" />
   </joint>
   <link name="right_Fixed_Jaw">
     <inertial>
@@ -712,20 +706,14 @@
       <geometry>
         <mesh filename="package://alohamini_description/meshes/visual/right_Fixed_Jaw.STL" />
       </geometry>
-      <material name="">
+      <material name="cad_gray">
         <color rgba="0.752941176470588 0.752941176470588 0.752941176470588 1" />
       </material>
     </visual>
-    <collision name="right_fixed_jaw_palm">
-      <origin xyz="-0.0025 0.002 0.011" rpy="0 0 0" />
+    <collision name="right_fixed_jaw_cad">
+      <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <box size="0.065 0.052 0.058" />
-      </geometry>
-    </collision>
-    <collision name="right_fixed_finger_pad">
-      <origin xyz="-0.019 0 0.072" rpy="0 0 0" />
-      <geometry>
-        <box size="0.010 0.014 0.064" />
+        <mesh filename="package://alohamini_description/meshes/collision/fixed_jaw_vhacd.stl" />
       </geometry>
     </collision>
   </link>
@@ -747,7 +735,7 @@
       <geometry>
         <mesh filename="package://alohamini_description/meshes/visual/right_Moving_Jaw.STL" />
       </geometry>
-      <material name="">
+      <material name="cad_gray">
         <color rgba="0.752941176470588 0.752941176470588 0.752941176470588 1" />
       </material>
     </visual>
@@ -800,14 +788,14 @@
       <geometry>
         <mesh filename="package://alohamini_description/meshes/visual/right_camera.STL" />
       </geometry>
-      <material name="">
+      <material name="cad_gray">
         <color rgba="0.752941176470588 0.752941176470588 0.752941176470588 1" />
       </material>
     </visual>
     <collision>
-      <origin xyz="0 0 0.00955467" rpy="0 0 0" />
+      <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <box size="0.036 0.0369683 0.0191091" />
+        <mesh filename="package://alohamini_description/meshes/collision/wrist_camera_vhacd.stl" />
       </geometry>
     </collision>
   </link>
