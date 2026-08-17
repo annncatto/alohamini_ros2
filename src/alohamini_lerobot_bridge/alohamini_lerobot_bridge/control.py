@@ -19,6 +19,8 @@ LEFT_ARM_JOINTS = (
     "left_wrist_roll",
 )
 RIGHT_ARM_JOINTS = tuple(name.replace("left_", "right_", 1) for name in LEFT_ARM_JOINTS)
+LEFT_GRIPPER_JOINTS = ("left_gripper",)
+RIGHT_GRIPPER_JOINTS = ("right_gripper",)
 LIFT_JOINTS = ("vertical_move",)
 
 
@@ -265,6 +267,8 @@ class CommandComposer:
         arm_goal_tolerance: float = 0.03,
         lift_goal_tolerance: float = 0.003,
         goal_time_tolerance: float = 1.0,
+        gripper_tracking_error: float = 0.5,
+        gripper_goal_tolerance: float = 0.05,
     ) -> None:
         self.mapper = mapper
         self.command_timeout = float(command_timeout)
@@ -285,6 +289,22 @@ class CommandComposer:
                 RIGHT_ARM_JOINTS,
                 arm_tracking_error,
                 arm_goal_tolerance,
+                goal_time_tolerance,
+                hold_duration,
+            ),
+            "left_gripper": TrajectoryResource(
+                "left_gripper",
+                LEFT_GRIPPER_JOINTS,
+                gripper_tracking_error,
+                gripper_goal_tolerance,
+                goal_time_tolerance,
+                hold_duration,
+            ),
+            "right_gripper": TrajectoryResource(
+                "right_gripper",
+                RIGHT_GRIPPER_JOINTS,
+                gripper_tracking_error,
+                gripper_goal_tolerance,
                 goal_time_tolerance,
                 hold_duration,
             ),

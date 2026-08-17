@@ -5,6 +5,8 @@ moveit_simple_controller_manager:
   controller_names:
     - left_arm_controller
     - right_arm_controller
+    - left_gripper_controller
+    - right_gripper_controller
     - lift_controller
 
   left_arm_controller:
@@ -31,10 +33,26 @@ moveit_simple_controller_manager:
       - right_wrist_yaw_joint
       - right_wrist_roll
 
+  left_gripper_controller:
+    type: GripperCommand
+    action_ns: gripper_cmd
+    default: true
+    joints:
+      - left_gripper
+    max_effort: 0.0
+
+  right_gripper_controller:
+    type: GripperCommand
+    action_ns: gripper_cmd
+    default: true
+    joints:
+      - right_gripper
+    max_effort: 0.0
+
   lift_controller:
     type: FollowJointTrajectory
     action_ns: follow_joint_trajectory
-    default: false
+    default: true
     joints:
       - vertical_move
 

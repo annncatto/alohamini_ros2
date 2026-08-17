@@ -9,7 +9,7 @@ from pathlib import Path
 import rclpy
 import yaml
 from ament_index_python.packages import get_package_share_directory
-from control_msgs.action import FollowJointTrajectory
+from control_msgs.action import FollowJointTrajectory, GripperCommand
 from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus, KeyValue
 from geometry_msgs.msg import Twist, TwistStamped
 from rclpy.action import ActionServer, CancelResponse, GoalResponse
@@ -53,6 +53,9 @@ class AlohaMiniLeRobotBridge(Node):
             "arm_path_tolerance_rad": 0.35,
             "lift_path_tolerance_m": 0.03,
             "arm_goal_tolerance_rad": 0.03,
+            "gripper_path_tolerance_rad": 0.5,
+            "gripper_goal_tolerance_rad": 0.05,
+            "gripper_command_duration_sec": 3.0,
             "lift_goal_tolerance_m": 0.003,
             "goal_time_tolerance_sec": 1.0,
             "expected_robot_model": "alohamini2pro",
@@ -111,7 +114,17 @@ class AlohaMiniLeRobotBridge(Node):
             float(self.get_parameter("arm_goal_tolerance_rad").value),
             float(self.get_parameter("lift_goal_tolerance_m").value),
             float(self.get_parameter("goal_time_tolerance_sec").value),
+            float(self.get_parameter("gripper_path_tolerance_rad").value),
+            float(self.get_parameter("gripper_goal_tolerance_rad").value),
         )
+        self.gripper_command_duration = float(
+            self.get_parameter("gripper_command_duration_sec").value
+        )
+        if (
+            not math.isfinite(self.gripper_command_duration)
+            or self.gripper_command_duration <= 0.0
+        ):
+            raise ValueError("gripper_command_duration_sec must be finite and positive")
         self.command_gate = self.composer.base
         self.base_frame = str(self.get_parameter("base_frame").value)
         self.wheel_radius = float(self.get_parameter("wheel_radius").value)
@@ -171,6 +184,23 @@ class AlohaMiniLeRobotBridge(Node):
                         self.execute_trajectory, resource=resource
                     ),
                     goal_callback=partial(self.on_trajectory_goal, resource=resource),
+                    cancel_callback=self.on_trajectory_cancel,
+                    callback_group=self.action_callback_group,
+                )
+            )
+        for resource, action_name in (
+            ("left_gripper", "/left_gripper_controller/gripper_cmd"),
+            ("right_gripper", "/right_gripper_controller/gripper_cmd"),
+        ):
+            self.action_servers.append(
+                ActionServer(
+                    self,
+                    GripperCommand,
+                    action_name,
+                    execute_callback=partial(
+                        self.execute_gripper_command, resource=resource
+                    ),
+                    goal_callback=partial(self.on_gripper_goal, resource=resource),
                     cancel_callback=self.on_trajectory_cancel,
                     callback_group=self.action_callback_group,
                 )
@@ -433,6 +463,44 @@ class AlohaMiniLeRobotBridge(Node):
             return GoalResponse.REJECT
         return GoalResponse.ACCEPT
 
+    def on_gripper_goal(self, goal, resource: str) -> GoalResponse:
+        if not self.composer.enabled:
+            self.get_logger().warning(f"Rejected {resource} goal: commands are disabled")
+            return GoalResponse.REJECT
+        if not self.observation_fresh():
+            self.get_logger().warning(f"Rejected {resource} goal: observation is stale")
+            return GoalResponse.REJECT
+        if self.require_model_match and not self.model_matches():
+            self.get_logger().warning(f"Rejected {resource} goal: robot model mismatch")
+            return GoalResponse.REJECT
+        position = float(goal.command.position)
+        max_effort = float(goal.command.max_effort)
+        if not math.isfinite(position):
+            self.get_logger().warning(f"Rejected {resource} goal: position is not finite")
+            return GoalResponse.REJECT
+        if not math.isfinite(max_effort) or max_effort < 0.0:
+            self.get_logger().warning(
+                f"Rejected {resource} goal: max_effort must be finite and non-negative"
+            )
+            return GoalResponse.REJECT
+        if max_effort > 0.0:
+            self.get_logger().warning(
+                f"Rejected {resource} goal: per-goal max_effort is unsupported; "
+                "the verified Host owns gripper current limiting"
+            )
+            return GoalResponse.REJECT
+        joint = self.composer.resources[resource].joints[0]
+        try:
+            if joint not in self.latest_positions:
+                raise ValueError(f"fresh measured state lacks {joint}")
+            self.mapper.urdf_to_lerobot(
+                joint, position, self.robot_metadata or {}
+            )
+        except (KeyError, TypeError, ValueError) as error:
+            self.get_logger().warning(f"Rejected {resource} goal: {error}")
+            return GoalResponse.REJECT
+        return GoalResponse.ACCEPT
+
     @staticmethod
     def on_trajectory_cancel(_goal_handle) -> CancelResponse:
         return CancelResponse.ACCEPT
@@ -514,6 +582,76 @@ class AlohaMiniLeRobotBridge(Node):
         goal_handle.abort()
         result.error_code = FollowJointTrajectory.Result.INVALID_GOAL
         result.error_string = "ROS shutdown"
+        return result
+
+    def gripper_feedback(self, resource: str, reached_goal: bool = False):
+        joint = self.composer.resources[resource].joints[0]
+        feedback = GripperCommand.Feedback()
+        feedback.position = float(self.latest_positions[joint])
+        feedback.effort = 0.0
+        feedback.stalled = False
+        feedback.reached_goal = reached_goal
+        return feedback
+
+    def execute_gripper_command(self, goal_handle, resource: str):
+        result = GripperCommand.Result()
+        controller = self.composer.resources[resource]
+        joint = controller.joints[0]
+        target = float(goal_handle.request.command.position)
+        try:
+            goal_id = self.composer.start_trajectory(
+                resource,
+                [joint],
+                [
+                    TrajectorySample(
+                        self.gripper_command_duration,
+                        {joint: target},
+                    )
+                ],
+                self.latest_positions,
+                self.observation_fresh(),
+            )
+        except (KeyError, TypeError, ValueError) as error:
+            self.get_logger().warning(f"Failed to start {resource} goal: {error}")
+            goal_handle.abort()
+            result.position = float(self.latest_positions.get(joint, 0.0))
+            result.effort = 0.0
+            result.stalled = False
+            result.reached_goal = False
+            return result
+
+        while rclpy.ok():
+            if goal_handle.is_cancel_requested:
+                self.composer.cancel_trajectory(
+                    resource,
+                    goal_id,
+                    self.latest_positions,
+                    self.observation_fresh(),
+                )
+            event = controller.terminal(goal_id)
+            if event is not None:
+                reached = event.state is TerminalState.SUCCEEDED
+                result.position = float(self.latest_positions.get(joint, 0.0))
+                result.effort = 0.0
+                result.stalled = False
+                result.reached_goal = reached
+                if reached:
+                    goal_handle.succeed()
+                elif event.state is TerminalState.CANCELED:
+                    goal_handle.canceled()
+                else:
+                    self.get_logger().warning(f"{resource} command failed: {event.message}")
+                    goal_handle.abort()
+                return result
+            if self.observation_fresh():
+                goal_handle.publish_feedback(self.gripper_feedback(resource))
+            time.sleep(0.02)
+
+        goal_handle.abort()
+        result.position = float(self.latest_positions.get(joint, 0.0))
+        result.effort = 0.0
+        result.stalled = False
+        result.reached_goal = False
         return result
 
     def publish_diagnostics(self) -> None:

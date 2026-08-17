@@ -26,6 +26,13 @@ def _mapper():
             "safe_q_min_rad": -2.0,
             "safe_q_max_rad": 2.0,
         }
+    joints["gripper"] = {
+        "reference_tick": 2048,
+        "reference_q_rad": 0.32,
+        "sign": -1,
+        "urdf_open_rad": -1.8,
+        "urdf_closed_rad": 0.32,
+    }
     return JointMapper(
         {"ticks_per_revolution": 4096, "joints": joints},
         {
@@ -48,6 +55,7 @@ def _metadata():
             "wrist_flex",
             "wrist_yaw",
             "wrist_roll",
+            "gripper",
         ):
             motors[f"arm_{side}_{joint}"] = {
                 "normalization": "degrees",
@@ -66,6 +74,8 @@ def _measured():
     return {
         **{joint: 0.0 for joint in LEFT_ARM_JOINTS},
         **{joint.replace("left_", "right_", 1): 0.0 for joint in LEFT_ARM_JOINTS},
+        "left_gripper": 0.32,
+        "right_gripper": 0.32,
         "vertical_move": 0.0,
     }
 
@@ -212,6 +222,54 @@ def test_independently_active_resources_compose_without_inactive_resource_fields
         "y.vel": 0.0,
         "theta.vel": 0.0,
     }
+
+
+def test_left_gripper_is_independent_and_does_not_activate_arm_or_right_gripper():
+    composer = _composer()
+    composer.enable()
+    measured = _measured()
+    composer.start_trajectory(
+        "left_gripper",
+        ["left_gripper"],
+        [TrajectorySample(3.0, {"left_gripper": -1.0})],
+        measured,
+        True,
+        now=0.0,
+    )
+
+    action = composer.compose(measured, _metadata(), True, now=0.5)
+
+    assert "arm_left_gripper.pos" in action
+    assert not any(
+        key.startswith("arm_left_") and key != "arm_left_gripper.pos"
+        for key in action
+    )
+    assert not any(key.startswith("arm_right_") for key in action)
+
+
+def test_stale_gripper_feedback_stops_generating_gripper_targets():
+    composer = _composer()
+    composer.enable()
+    measured = _measured()
+    goal_id = composer.start_trajectory(
+        "right_gripper",
+        ["right_gripper"],
+        [TrajectorySample(3.0, {"right_gripper": -1.0})],
+        measured,
+        True,
+        now=0.0,
+    )
+    assert "arm_right_gripper.pos" in composer.compose(
+        measured, _metadata(), True, now=0.2
+    )
+
+    first = composer.compose(measured, _metadata(), False, now=0.3)
+    second = composer.compose(measured, _metadata(), False, now=0.4)
+
+    assert first == {"x.vel": 0.0, "y.vel": 0.0, "theta.vel": 0.0}
+    assert second is None
+    event = composer.resources["right_gripper"].terminal(goal_id)
+    assert event is not None and event.state is TerminalState.STALE
 
 
 def test_tracking_error_aborts_and_holds_latest_measurement_not_old_target():

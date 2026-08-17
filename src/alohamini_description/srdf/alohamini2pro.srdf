@@ -16,6 +16,9 @@
   <group name="right_gripper">
     <joint name="right_gripper" />
   </group>
+  <group name="lift">
+    <joint name="vertical_move" />
+  </group>
   <!-- Installed encoder Home bound to the matching folded CAD pose. -->
   <group_state name="home" group="left_arm">
     <joint name="left_shoulder_pan" value="0.0" />
@@ -60,6 +63,15 @@
   </group_state>
   <group_state name="closed" group="right_gripper">
     <joint name="right_gripper" value="0.32" />
+  </group_state>
+  <group_state name="bottom" group="lift">
+    <joint name="vertical_move" value="-0.3" />
+  </group_state>
+  <group_state name="middle" group="lift">
+    <joint name="vertical_move" value="0.0" />
+  </group_state>
+  <group_state name="top" group="lift">
+    <joint name="vertical_move" value="0.3" />
   </group_state>
   <end_effector name="left_gripper_eef" parent_link="left_Fixed_Jaw" group="left_gripper" parent_group="left_arm" />
   <end_effector name="right_gripper_eef" parent_link="right_Fixed_Jaw" group="right_gripper" parent_group="right_arm" />

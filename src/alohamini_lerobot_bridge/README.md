@@ -44,17 +44,26 @@ is armed independently by a post-enable command. The standard interfaces are:
 - base: `/cmd_vel`;
 - left arm: `/left_arm_controller/follow_joint_trajectory`;
 - right arm: `/right_arm_controller/follow_joint_trajectory`;
-- lift: `/lift_controller/follow_joint_trajectory`.
+- lift: `/lift_controller/follow_joint_trajectory`;
+- left gripper: `/left_gripper_controller/gripper_cmd`;
+- right gripper: `/right_gripper_controller/gripper_cmd`.
+
+The gripper actions use the corresponding URDF revolute-joint coordinate, so
+their `position` value is in radians. MoveIt exposes each gripper as a planning
+group with `open` and `closed` named states. `max_effort` must remain `0.0`:
+current limiting belongs to the already validated LeRobot Host and cannot be
+overridden through ROS.
 
 A partial arm trajectory latches every omitted joint in that arm from the
 latest measured state when the resource is first activated. Inactive resources
 do not contribute target fields. There are no implicit zero joint targets.
 
 If observation freshness is lost, the bridge emits one base-zero frame, emits
-no new arm or lift targets, invalidates the old command epoch, and then stops
-sending so the Host watchdog remains authoritative. Cancel or preemption only
-latches a short measured-position hold while state is fresh. Excess tracking
-error aborts the trajectory instead of continuing to chase its target.
+no new arm, lift, or gripper targets, invalidates the old command epoch, and
+then stops sending so the Host watchdog remains authoritative. Cancel or
+preemption only latches a short measured-position hold while state is fresh.
+Excess tracking error aborts the trajectory instead of continuing to chase its
+target.
 
 Path and endpoint checks are separate. The default lift path tolerance is
 `0.03 m`; at nominal trajectory completion, measured error must be within

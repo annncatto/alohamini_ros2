@@ -17,3 +17,6 @@ right_arm:
 dual_arms:
   planner_configs:
     - RRTConnect
+lift:
+  planner_configs:
+    - RRTConnect

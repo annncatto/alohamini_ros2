@@ -29,3 +29,8 @@ joint_limits:
   right_wrist_yaw_joint: *wrist
   left_wrist_roll: *wrist
   right_wrist_roll: *wrist
+  vertical_move:
+    has_velocity_limits: true
+    max_velocity: 0.03
+    has_acceleration_limits: true
+    max_acceleration: 0.06
