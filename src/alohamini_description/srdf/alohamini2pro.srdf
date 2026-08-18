@@ -6,6 +6,22 @@
   <group name="right_arm">
     <chain base_link="right_Base" tip_link="right_tcp" />
   </group>
+  <!-- IK fallback groups: the same chains solved by the LMA plugin, used
+       when the primary KDL solver diverges (it fails near the extended-arm
+       configurations), and a position-only variant that drops the held TCP
+       orientation when the full pose is unreachable. -->
+  <group name="left_arm_lma">
+    <chain base_link="left_Base" tip_link="left_tcp" />
+  </group>
+  <group name="right_arm_lma">
+    <chain base_link="right_Base" tip_link="right_tcp" />
+  </group>
+  <group name="left_arm_pos">
+    <chain base_link="left_Base" tip_link="left_tcp" />
+  </group>
+  <group name="right_arm_pos">
+    <chain base_link="right_Base" tip_link="right_tcp" />
+  </group>
   <group name="dual_arms">
     <group name="left_arm" />
     <group name="right_arm" />

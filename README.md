@@ -29,11 +29,13 @@ without writing changes back into the authoritative description. See
 ## Current scope
 
 The core packages are `alohamini_description`, `alohamini_calibration`,
-`alohamini_moveit_config`, and `alohamini_lerobot_bridge`. They establish one upstream location for the
+`alohamini_moveit_config`, `alohamini_lerobot_bridge`, and
+`alohamini_joycon_teleop`. They establish one upstream location for the
 CAD-derived whole-robot model, calibration assets, mesh assets, MoveIt
-semantics, and their provenance. `~/alohamini_lidar_imu` remains the source of
-the ROS bridge and an alternative experimental C++ `ros2_control` base
-backend; it is not the shared physical Runtime authority.
+semantics, guarded physical interfaces, and Joy-Con teleoperation.
+`~/alohamini_lidar_imu` remains the source of the ROS bridge and an alternative
+experimental C++ `ros2_control` base backend; it is not the shared physical
+Runtime authority.
 
 The current whole-robot description uses `root` as its planning reference and
 preserves RoboTwin/CAD arm link and joint coordinates. Its current AlohaMini2Pro
@@ -48,6 +50,7 @@ colcon build --symlink-install --cmake-args -DPython3_EXECUTABLE=/usr/bin/python
 source install/setup.bash
 ros2 launch alohamini_description description.launch.py
 ros2 launch alohamini_moveit_config plan_only.launch.py
+ros2 launch alohamini_joycon_teleop preview.launch.py
 
 # Shared physical runtime state bridge; read-only by default:
 ros2 launch alohamini_lerobot_bridge runtime.launch.py host:=127.0.0.1
