@@ -132,6 +132,8 @@ def main() -> int:
         signatures = {side: None for side in controllers}
         frozen_since = {side: None for side in controllers}
         reconnect_cooldown = {side: 0.0 for side in controllers}
+        stick_log_baseline = {side: None for side in controllers}
+        stick_log_time = {side: 0.0 for side in controllers}
         while not stop:
             started = time.monotonic()
             sequence += 1
@@ -143,6 +145,26 @@ def main() -> int:
                     tuple(sorted(payload["buttons"].items())),
                 )
                 now = time.monotonic()
+                # Log raw stick values whenever they move, so stick health is
+                # visible directly in the terminal (rate-limited per side).
+                baseline = stick_log_baseline[side]
+                stick = tuple(payload["stick"])
+                if baseline is None:
+                    stick_log_baseline[side] = stick
+                elif (
+                    max(
+                        abs(stick[0] - baseline[0]),
+                        abs(stick[1] - baseline[1]),
+                    )
+                    > 500
+                    and now - stick_log_time[side] > 1.0
+                ):
+                    stick_log_time[side] = now
+                    stick_log_baseline[side] = stick
+                    print(
+                        f"[{side}] stick H={stick[0]:.0f} V={stick[1]:.0f}",
+                        flush=True,
+                    )
                 if signature == signatures[side]:
                     if frozen_since[side] is None:
                         frozen_since[side] = now

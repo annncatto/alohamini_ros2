@@ -230,10 +230,14 @@ class JoyConTeleop(Node):
         self.lift_goal_handle = None
         self.last_lift_goal = 0.0
         self.base_was_active = False
+        self.pending_base_fk = False
+        self.base_pose_stale = False
+        self.last_base_fk = 0.0
         self.last_loop = time.monotonic()
         self.last_stale_warning = 0.0
         self.last_measured_state = None
         self.last_ik_warning: dict[str, float] = {}
+        self.last_ik_ok: dict[str, float] = {}
 
         self.zmq_context = zmq.Context()
         self.input_socket = self.zmq_context.socket(zmq.SUB)
@@ -384,6 +388,38 @@ class JoyConTeleop(Node):
         except Exception as exc:
             self.get_logger().warning(f"{side} arm FK latch failed: {exc}")
 
+    def request_base_fk(self) -> None:
+        """Refresh both arm base poses in the root frame after a base move.
+
+        The stored base pose is only valid while the root joints stay put;
+        after a preview base translation/rotation the composed IK target would
+        otherwise stay at the old world position and cause jumps."""
+        if self.pending_base_fk:
+            return
+        request = GetPositionFK.Request()
+        request.header.frame_id = "root"
+        request.fk_link_names = ["left_Base", "right_Base"]
+        self.fill_robot_state(request.robot_state)
+        self.pending_base_fk = True
+        future = self.fk_client.call_async(request)
+        future.add_done_callback(self.on_base_fk)
+
+    def on_base_fk(self, future) -> None:
+        self.pending_base_fk = False
+        self.base_pose_stale = False
+        self.last_base_fk = time.monotonic()
+        try:
+            response = future.result()
+            if (
+                response.error_code.val != response.error_code.SUCCESS
+                or len(response.pose_stamped) != 2
+            ):
+                raise RuntimeError(f"base FK error {response.error_code.val}")
+            for side, item in zip(("left", "right"), response.pose_stamped, strict=True):
+                self.arms[side].base_pose = pose_to_dict(item.pose)
+        except Exception as exc:
+            self.get_logger().warning(f"base FK refresh failed: {exc}")
+
     def request_ik(
         self,
         side: str,
@@ -513,6 +549,7 @@ class JoyConTeleop(Node):
                 key=lambda index: abs(candidate[index] - seed[index]),
             )
             worst_step = abs(candidate[worst] - seed[worst])
+            had_rejections = arm.rejection_streak > 0
             if worst_step > max_step:
                 arm.rejection_streak += 1
                 max_jump = float(self.get_parameter("max_ik_jump_rad").value)
@@ -550,6 +587,14 @@ class JoyConTeleop(Node):
                     return
             else:
                 arm.rejection_streak = 0
+            now = time.monotonic()
+            if now - self.last_ik_ok.get(side, 0.0) > 1.0:
+                self.last_ik_ok[side] = now
+                recovered = " (recovered)" if had_rejections else ""
+                self.get_logger().info(
+                    f"[{side}] IK OK [{mode}] max step {worst_step:.3f} rad"
+                    f"{recovered}"
+                )
             arm.target_pose = proposed_pose
             for name, value in zip(names, candidate, strict=True):
                 if not self.hardware_mode:
@@ -814,6 +859,7 @@ class JoyConTeleop(Node):
                 self.preview_base[2] += yaw * dt
                 for name, value in zip(ROOT_JOINTS, self.preview_base, strict=True):
                     self.positions[name] = value
+                self.base_pose_stale = True
             self.base_was_active = True
         elif self.base_was_active:
             if self.hardware_mode:
@@ -932,6 +978,8 @@ class JoyConTeleop(Node):
         )
         self.update_lift(left, lift_active, now, dt)
         self.update_base(left, right, lift_active, dt)
+        if self.base_pose_stale and now - self.last_base_fk > 0.1:
+            self.request_base_fk()
         self.update_arm("left", left, now, dt)
         self.update_arm("right", right, now, dt)
         self.publish_preview()

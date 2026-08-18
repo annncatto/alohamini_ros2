@@ -44,6 +44,17 @@ the in-flight arm trajectory in hardware mode. When no stick input is active no
 `/cmd_vel` is published, and the last active base command is followed by one
 zero.
 
+After a base move in preview the node refreshes both arm base poses via FK so
+the held TCP target follows the moved base instead of jumping to the old world
+position.
+
+The terminal prints rate-limited status for both failures and successes (once
+per second per arm): `[right] IK OK [kdl] max step 0.013 rad` and
+`[right] IK failed: NO_IK_SOLUTION (unreachable pose) [kdl]`. The native reader
+also prints raw stick values when a stick moves
+(`[left] stick H=3580 V=2048`), so stick health is visible without extra
+tools.
+
 ## TCP orientation and Joy-Con IMU
 
 The native reader still runs the library's two-second gyro-bias calibration at
