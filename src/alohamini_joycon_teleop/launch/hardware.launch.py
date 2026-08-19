@@ -12,10 +12,16 @@ from launch_ros.actions import Node
 def generate_launch_description() -> LaunchDescription:
     package = Path(get_package_share_directory("alohamini_joycon_teleop"))
     moveit = Path(get_package_share_directory("alohamini_moveit_config"))
+    description = Path(get_package_share_directory("alohamini_description"))
+    urdf = (
+        description / "urdf" / "alohamini2pro_moveit.urdf"
+    ).read_text(encoding="utf-8")
     return LaunchDescription(
         [
             DeclareLaunchArgument("host"),
-            DeclareLaunchArgument("use_rviz", default_value="true"),
+            # Named joycon_rviz so the included hardware_execution launch's
+            # use_rviz:=false (a global launch configuration) cannot shadow it.
+            DeclareLaunchArgument("joycon_rviz", default_value="true"),
             DeclareLaunchArgument("start_native_reader", default_value="true"),
             DeclareLaunchArgument(
                 "native_python",
@@ -27,8 +33,20 @@ def generate_launch_description() -> LaunchDescription:
                 ),
                 launch_arguments={
                     "host": LaunchConfiguration("host"),
-                    "use_rviz": LaunchConfiguration("use_rviz"),
+                    # The MoveIt RViz panel has an interactive TCP marker that
+                    # fights the Joy-Con controller; the Joy-Con launch uses
+                    # its own RViz config without it.
+                    "use_rviz": "false",
                 }.items(),
+            ),
+            Node(
+                package="rviz2",
+                executable="rviz2",
+                name="joycon_hardware_rviz",
+                output="log",
+                arguments=["-d", str(package / "config" / "joycon_hardware.rviz")],
+                parameters=[{"robot_description": urdf}],
+                condition=IfCondition(LaunchConfiguration("joycon_rviz")),
             ),
             ExecuteProcess(
                 cmd=[

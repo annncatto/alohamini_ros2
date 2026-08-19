@@ -135,6 +135,46 @@ def test_command_mapping_rejects_tick_outside_side_host_range():
         mapper.urdf_to_lerobot("right_shoulder_pan", 0.5, metadata)
 
 
+def test_command_mapping_clamps_marginal_calibrated_boundary_overflow():
+    # The measured folded Home sits exactly on the calibrated boundary;
+    # a few epsilons of encoder drift must be clamped, not reject every goal.
+    calibration = {
+        "ticks_per_revolution": 4096,
+        "joints": {
+            "shoulder_lift": {
+                "reference_tick": 969,
+                "reference_q_rad": 0.009204,
+                "sign": 1,
+                "safe_q_min_rad": -3.482136,
+                "safe_q_max_rad": 0.009204,
+            }
+        },
+    }
+    mapper = JointMapper(calibration)
+    metadata = {
+        "motors": {
+            "arm_right_shoulder_lift": {
+                "range_min": 0,
+                "range_max": 4095,
+                "drive_mode": 0,
+                "normalization": "degrees",
+            }
+        }
+    }
+
+    key, value = mapper.urdf_to_lerobot(
+        "right_shoulder_lift", 0.0092045, metadata
+    )
+    assert key == "arm_right_shoulder_lift.pos"
+    assert value == pytest.approx(
+        mapper.urdf_to_lerobot("right_shoulder_lift", 0.009204, metadata)[1],
+        abs=1e-4,
+    )
+
+    with pytest.raises(ValueError, match="outside calibrated"):
+        mapper.urdf_to_lerobot("right_shoulder_lift", 0.02, metadata)
+
+
 def test_first_observation_selects_calibrated_periodic_branch():
     mapper = JointMapper(
         {

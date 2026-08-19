@@ -145,25 +145,32 @@ class JoyConTeleop(Node):
             "input_timeout_sec": 0.25,
             "measured_state_timeout_sec": 0.25,
             "control_rate_hz": 20.0,
-            "ik_rate_hz": 8.0,
+            "ik_rate_hz": 12.0,
             "ik_timeout_sec": 0.3,
             "deadzone": 0.25,
             "tcp_speed_m_s": 0.03,
             "orientation_scale": 1.0,
             "orientation_deadband_rad": 0.02,
+            # Per-axis signs of the Joy-Con attitude increments applied to the
+            # TCP (roll, pitch, yaw). The native library reports roll in the
+            # opposite direction to the gripper, so roll is negated.
+            "orientation_axis_signs": [-1.0, 1.0, 1.0],
             "max_orientation_delta_rad": 1.2,
             "orientation_speed_rad_s": 0.8,
-            "imu_latch_reference": "level",
-            "preview_home": "reference",
+            "imu_latch_reference": "current",
+            "preview_home": "installed",
             "max_joint_step_rad": 0.10,
             "max_ik_jump_rad": 0.5,
             "arm_goal_max_velocity_rad_s": 0.4,
             "avoid_collisions": True,
-            "arm_trajectory_duration_sec": 0.35,
+            "arm_trajectory_duration_sec": 0.15,
             "base_linear_speed_m_s": 0.10,
             "base_angular_speed_rad_s": 0.5,
             "lift_speed_m_s": 0.02,
-            "lift_command_period_sec": 0.4,
+            "lift_command_period_sec": 0.15,
+            "lift_hold": True,
+            "lift_hold_tolerance_m": 0.005,
+            "auto_enable_commands": True,
             "preview_joint_states_topic": "/alohamini_plan_only/joint_states",
             "measured_joint_states_topic": "/joint_states",
         }
@@ -226,13 +233,17 @@ class JoyConTeleop(Node):
         self.lift_target = self.positions["vertical_move"]
         self.measured_lift = self.lift_target
         self.lift_active = False
-        self.lift_goal_busy = False
         self.lift_goal_handle = None
         self.last_lift_goal = 0.0
+        self.lift_hold_active = False
+        self.commands_enabled = False
+        self.last_enable_attempt = 0.0
         self.base_was_active = False
         self.pending_base_fk = False
         self.base_pose_stale = False
         self.last_base_fk = 0.0
+        self.last_readiness_log = 0.0
+        self.readiness_announced = False
         self.last_loop = time.monotonic()
         self.last_stale_warning = 0.0
         self.last_measured_state = None
@@ -288,9 +299,19 @@ class JoyConTeleop(Node):
             "/lift_controller/follow_joint_trajectory",
             callback_group=self.callback_group,
         )
+        from std_srvs.srv import SetBool
+
+        self.enable_client = self.create_client(
+            SetBool,
+            "/alohamini_lerobot_bridge/command_enable",
+            callback_group=self.callback_group,
+        )
         rate = float(self.get_parameter("control_rate_hz").value)
         self.timer = self.create_timer(
             1.0 / rate, self.on_timer, callback_group=self.callback_group
+        )
+        self.readiness_timer = self.create_timer(
+            2.0, self.publish_readiness, callback_group=self.callback_group
         )
         mode = "HARDWARE" if self.hardware_mode else "PREVIEW"
         self.get_logger().info(
@@ -310,7 +331,7 @@ class JoyConTeleop(Node):
                 self.positions[name] = float(value)
         if "vertical_move" in message.name:
             self.measured_lift = self.positions["vertical_move"]
-            if not self.lift_active:
+            if not self.lift_active and not self.lift_hold_active:
                 self.lift_target = self.measured_lift
         if any(name in message.name for name in arm_names("left")) or any(
             name in message.name for name in arm_names("right")
@@ -611,9 +632,8 @@ class JoyConTeleop(Node):
             self.get_logger().warning(f"{side} arm IK failed: {exc}")
 
     def send_arm_goal(self, side: str, positions: list[float]) -> None:
-        arm = self.arms[side]
         client = self.arm_clients[side]
-        if arm.goal_busy or not client.server_is_ready():
+        if not client.server_is_ready():
             return
         names = arm_names(side)
         worst_step = max(
@@ -633,7 +653,6 @@ class JoyConTeleop(Node):
         point.positions = positions
         point.time_from_start = duration(goal_duration)
         goal.trajectory.points = [point]
-        arm.goal_busy = True
         future = client.send_goal_async(goal)
         future.add_done_callback(partial(self.on_arm_goal_response, side))
 
@@ -642,20 +661,39 @@ class JoyConTeleop(Node):
         try:
             handle = future.result()
             if not handle.accepted:
-                arm.goal_busy = False
+                self.warn_ik(
+                    side,
+                    "bridge rejected the arm goal (commands disabled?); "
+                    "enable with: ros2 service call "
+                    "/alohamini_lerobot_bridge/command_enable "
+                    "std_srvs/srv/SetBool '{data: true}'",
+                )
                 return
             arm.goal_handle = handle
             if not arm.active:
                 handle.cancel_goal_async()
             result = handle.get_result_async()
-            result.add_done_callback(partial(self.on_arm_result, side))
+            result.add_done_callback(partial(self.on_arm_result, side, handle))
         except Exception:
-            arm.goal_busy = False
+            pass
 
-    def on_arm_result(self, side: str, _future) -> None:
+    def on_arm_result(self, side: str, handle, future) -> None:
         arm = self.arms[side]
-        arm.goal_busy = False
+        if arm.goal_handle is not handle:
+            # Superseded by a newer continuously streamed goal; silent.
+            return
         arm.goal_handle = None
+        if not arm.active:
+            return
+        try:
+            result = future.result()
+            if result.error_code != result.SUCCESSFUL:
+                self.get_logger().warning(
+                    f"[{side}] arm goal ended with code "
+                    f"{result.error_code}: {result.error_string or 'unknown'}"
+                )
+        except Exception:
+            pass
 
     def deactivate_arm(self, side: str) -> None:
         """Stop new arm targets; keep the last latch so Home re-latch and the
@@ -745,10 +783,20 @@ class JoyConTeleop(Node):
                     self.get_parameter("max_orientation_delta_rad").value
                 )
                 scale = float(self.get_parameter("orientation_scale").value)
+                signs = [
+                    float(value)
+                    for value in self.get_parameter("orientation_axis_signs").value
+                ]
                 deltas = [
-                    max(-max_delta, min(max_delta, scale * (current - anchor)))
-                    for current, anchor in zip(
-                        sample["orientation_rpy"], arm.joy_anchor_rpy, strict=True
+                    max(
+                        -max_delta,
+                        min(max_delta, sign * scale * (current - anchor)),
+                    )
+                    for sign, current, anchor in zip(
+                        signs,
+                        sample["orientation_rpy"],
+                        arm.joy_anchor_rpy,
+                        strict=True,
                     )
                 ]
                 if max(abs(value) for value in deltas) > self.orientation_deadband:
@@ -866,6 +914,68 @@ class JoyConTeleop(Node):
                 self.cmd_vel_pub.publish(Twist())
             self.base_was_active = False
 
+    def publish_readiness(self) -> None:
+        if not self.hardware_mode:
+            return
+        now = time.monotonic()
+        if now - self.last_readiness_log < 10.0 and self.readiness_announced:
+            return
+        issues = []
+        if self.last_measured_state is None or (
+            now - self.last_measured_state > self.measured_state_timeout
+        ):
+            issues.append("no fresh measured /joint_states")
+        for name, client in self.arm_clients.items():
+            if not client.server_is_ready():
+                issues.append(f"{name} action server not ready")
+        if issues:
+            self.last_readiness_log = now
+            self.get_logger().warning(
+                "hardware not ready yet: " + "; ".join(issues)
+            )
+            return
+        if not self.readiness_announced:
+            self.readiness_announced = True
+            self.get_logger().info(
+                "hardware ready: measured state fresh and arm action servers up"
+            )
+        if (
+            bool(self.get_parameter("auto_enable_commands").value)
+            and not self.commands_enabled
+            and now - self.last_enable_attempt > 10.0
+        ):
+            self.last_enable_attempt = now
+            if self.enable_client.service_is_ready():
+                self.get_logger().info(
+                    "auto-enabling bridge commands "
+                    "(/alohamini_lerobot_bridge/command_enable)"
+                )
+                from std_srvs.srv import SetBool
+
+                request = SetBool.Request()
+                request.data = True
+                future = self.enable_client.call_async(request)
+                future.add_done_callback(self.on_enable_response)
+            else:
+                self.get_logger().warning(
+                    "command_enable service not available yet; retrying"
+                )
+
+    def on_enable_response(self, future) -> None:
+        try:
+            response = future.result()
+            if response.success:
+                self.commands_enabled = True
+                self.get_logger().info(
+                    "bridge commands enabled; homing arms to the reference pose"
+                )
+            else:
+                self.get_logger().warning(
+                    f"bridge refused command enable: {response.message}"
+                )
+        except Exception as exc:
+            self.get_logger().warning(f"command enable call failed: {exc}")
+
     def update_lift(
         self, sample: dict | None, active: bool, now: float, dt: float
     ) -> None:
@@ -873,11 +983,19 @@ class JoyConTeleop(Node):
             if self.lift_active and self.hardware_mode:
                 if self.lift_goal_handle is not None:
                     self.lift_goal_handle.cancel_goal_async()
+                # Freeze the last commanded height and hold it: the Host
+                # stops driving the lift once the trajectory stream ends,
+                # so the teleop re-commands whenever the lift sinks beyond
+                # the tolerance (see update_lift_hold).
                 self.lift_target = self.measured_lift
+                self.lift_hold_active = bool(
+                    self.get_parameter("lift_hold").value
+                )
             self.lift_active = False
             return
         if not self.lift_active:
             self.lift_active = True
+            self.lift_hold_active = False
             if self.hardware_mode:
                 self.lift_target = self.measured_lift
         vertical = normalize_stick(sample["stick"][1], self.deadzone)
@@ -889,37 +1007,64 @@ class JoyConTeleop(Node):
             self.positions["vertical_move"] = self.lift_target
             return
         period = float(self.get_parameter("lift_command_period_sec").value)
-        if self.lift_goal_busy or now - self.last_lift_goal < period:
+        if now - self.last_lift_goal < period:
             return
+        self.send_lift_goal(now)
+
+    def send_lift_goal(self, now: float) -> None:
+        """Stream a short lift goal; newer goals preempt older ones in the
+        bridge so the height command stays continuous."""
         if not self.lift_client.server_is_ready():
             return
+        period = float(self.get_parameter("lift_command_period_sec").value)
         goal = FollowJointTrajectory.Goal()
         goal.trajectory.joint_names = ["vertical_move"]
         point = JointTrajectoryPoint()
         point.positions = [self.lift_target]
-        point.time_from_start = duration(max(period * 1.5, 0.5))
+        point.time_from_start = duration(max(period * 1.2, 0.2))
         goal.trajectory.points = [point]
-        self.lift_goal_busy = True
         self.last_lift_goal = now
         future = self.lift_client.send_goal_async(goal)
         future.add_done_callback(self.on_lift_goal_response)
+
+    def update_lift_hold(self, now: float) -> None:
+        """Keep the lift at the frozen height after the operator releases L.
+
+        The bridge only streams lift commands while a trajectory is active, so
+        once the goal finishes the Host stops holding the axis and it sinks.
+        Re-command the frozen target whenever the measured lift drifts beyond
+        the tolerance."""
+        if (
+            not self.hardware_mode
+            or not self.lift_hold_active
+            or self.lift_active
+        ):
+            return
+        tolerance = float(self.get_parameter("lift_hold_tolerance_m").value)
+        if abs(self.measured_lift - self.lift_target) <= tolerance:
+            return
+        period = float(self.get_parameter("lift_command_period_sec").value)
+        if now - self.last_lift_goal < period:
+            return
+        self.send_lift_goal(now)
 
     def on_lift_goal_response(self, future) -> None:
         try:
             handle = future.result()
             if not handle.accepted:
-                self.lift_goal_busy = False
                 return
             self.lift_goal_handle = handle
-            if not self.lift_active:
+            if not self.lift_active and not self.lift_hold_active:
                 handle.cancel_goal_async()
-            handle.get_result_async().add_done_callback(self.on_lift_result)
+            handle.get_result_async().add_done_callback(
+                partial(self.on_lift_result, handle)
+            )
         except Exception:
-            self.lift_goal_busy = False
+            pass
 
-    def on_lift_result(self, _future) -> None:
-        self.lift_goal_busy = False
-        self.lift_goal_handle = None
+    def on_lift_result(self, handle, _future) -> None:
+        if self.lift_goal_handle is handle:
+            self.lift_goal_handle = None
 
     def publish_preview(self) -> None:
         if self.hardware_mode:
@@ -977,6 +1122,7 @@ class JoyConTeleop(Node):
             left is not None and left["buttons"]["shoulder"]
         )
         self.update_lift(left, lift_active, now, dt)
+        self.update_lift_hold(now)
         self.update_base(left, right, lift_active, dt)
         if self.base_pose_stale and now - self.last_base_fk > 0.1:
             self.request_base_fk()

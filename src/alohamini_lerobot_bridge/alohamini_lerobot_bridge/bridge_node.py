@@ -531,6 +531,16 @@ class AlohaMiniLeRobotBridge(Node):
         result = FollowJointTrajectory.Result()
         try:
             samples = self.trajectory_samples(goal_handle.request)
+            if samples and resource != "lift":
+                preview = {}
+                for joint, position in samples[0].positions.items():
+                    key, value = self.mapper.urdf_to_lerobot(
+                        joint, position, self.robot_metadata or {}
+                    )
+                    preview[key] = round(value, 2)
+                self.get_logger().info(
+                    f"[{resource}] trajectory accepted; first sample maps to {preview}"
+                )
             goal_id = self.composer.start_trajectory(
                 resource,
                 goal_handle.request.trajectory.joint_names,
@@ -542,6 +552,9 @@ class AlohaMiniLeRobotBridge(Node):
             goal_handle.abort()
             result.error_code = FollowJointTrajectory.Result.INVALID_GOAL
             result.error_string = str(error)
+            self.get_logger().warning(
+                f"[{resource}] trajectory aborted at start: {error}"
+            )
             return result
 
         controller = self.composer.resources[resource]
@@ -556,6 +569,10 @@ class AlohaMiniLeRobotBridge(Node):
             event = controller.terminal(goal_id)
             if event is not None:
                 result.error_string = event.message
+                self.get_logger().info(
+                    f"[{resource}] trajectory terminal: {event.state.name} "
+                    f"{event.message or ''}"
+                )
                 if event.state is TerminalState.SUCCEEDED:
                     goal_handle.succeed()
                     result.error_code = FollowJointTrajectory.Result.SUCCESSFUL

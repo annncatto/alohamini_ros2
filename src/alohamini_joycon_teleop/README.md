@@ -24,6 +24,10 @@ right arm. The left Joy-Con uses its d-pad where the right one uses X/B/Y/A.
 - R + right stick left/right: base turn (right = clockwise).
 - L + left stick up/down: lift axis up / down. While L is held the left stick
   contributes no base translation, so lift and drive never mix accidentally.
+  After release the node freezes the last commanded height and keeps holding
+  it: the Host stops driving the lift when the trajectory stream ends, so the
+  teleop re-commands whenever the measured lift sinks beyond
+  `lift_hold_tolerance_m` (`lift_hold: true`).
 - X (d-pad up) / B (d-pad down): that arm TCP forward / backward.
 - Y (d-pad left) / A (d-pad right): that arm TCP left / right.
   All four directions are in the robot root frame (+x = robot left,
@@ -72,10 +76,10 @@ the commanded TCP attitude is the pose at press time rotated by the Joy-Con
 attitude change since then, stepped at `orientation_speed_rad_s`
 (0.8 rad/s default). The controller's absolute attitude is irrelevant, so
 releasing and re-pressing SL/SR always continues from the current gripper
-orientation. At the first latch the orientation levels toward the classic
-level-grasp pose (`imu_latch_reference: level`); set it to `current` to keep
-the robot's current TCP attitude. The offline preview starts in the level
-reference pose (`preview_home: reference`).
+orientation. At the first latch the orientation optionally levels toward the
+classic level-grasp pose (`imu_latch_reference: level`); the default is
+`current`, which keeps the robot's TCP attitude so control works directly
+from the folded Home.
 
 - `orientation_scale`: rotation sensitivity (1.0 = native scaling).
 - `orientation_deadband_rad`: minimum applied attitude delta per axis.
@@ -146,8 +150,32 @@ Hardware mode starts the existing bridge read-only and does not call its
 ros2 launch alohamini_joycon_teleop hardware.launch.py host:=ROBOT_IP
 ```
 
-Only after measured state, TF, IK preview, collision behavior, and release
-behavior have been checked should the existing bridge command service be
-enabled explicitly. Disable it again before stopping the session. The native
-reader must never be replaced by the older direct `AlohaMiniClient` Joy-Con
-script, because that would create a second port-5555 command owner.
+The RViz started by this launch uses the Joy-Con config (robot model + TCP
+markers) without the MoveIt interactive TCP marker, which would fight the
+Joy-Con controller. Disable it with `joycon_rviz:=false`.
+
+The teleop node logs hardware readiness (fresh measured `/joint_states`, arm
+action servers up) every 10 s. By default it then enables the bridge commands
+itself (`auto_enable_commands: true`); set it to false to keep the manual flow:
+
+```bash
+ros2 service call /alohamini_lerobot_bridge/command_enable \
+  std_srvs/srv/SetBool '{data: true}'
+```
+
+Without enabled commands the bridge rejects every arm/gripper/lift goal (the
+node reports `bridge rejected the arm goal (commands disabled?)`). Disable the
+commands again before stopping the session.
+
+After the bridge is enabled, the node homes both arms once to the preview
+reference pose (`home_to_preview_pose: true`): it sends a direct joint-space
+trajectory to the reference joint values; the bridge converts URDF radians to
+encoder values through its own calibration mapping. The trajectory duration
+scales with the joint distance, the goal is retried once per second until the
+bridge accepts it, and homing never runs while the operator is actively moving
+an arm. If a homing goal is rejected, the bridge prints the rejection reason
+in its own terminal output.
+
+The native reader must never be replaced by the older direct
+`AlohaMiniClient` Joy-Con script, because that would create a second
+port-5555 command owner.

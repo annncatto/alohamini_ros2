@@ -11,6 +11,7 @@ import argparse
 import json
 import signal
 import time
+from pathlib import Path
 
 import zmq
 
@@ -26,6 +27,12 @@ def parse_args() -> argparse.Namespace:
         "--skip-imu-calibration",
         action="store_true",
         help="Do not run the native two-second stationary IMU calibration.",
+    )
+    parser.add_argument(
+        "--stick-log",
+        default=str(Path.home() / "joycon_sticks.log"),
+        help="Append-only raw stick log for diagnostics (default "
+        "~/joycon_sticks.log).",
     )
     return parser.parse_args()
 
@@ -134,75 +141,104 @@ def main() -> int:
         reconnect_cooldown = {side: 0.0 for side in controllers}
         stick_log_baseline = {side: None for side in controllers}
         stick_log_time = {side: 0.0 for side in controllers}
-        while not stop:
-            started = time.monotonic()
-            sequence += 1
-            for side, controller in controllers.items():
-                payload = sample(controller, side, sequence)
-                signature = (
-                    tuple(payload["stick"]),
-                    tuple(payload["orientation_rpy"]),
-                    tuple(sorted(payload["buttons"].items())),
-                )
-                now = time.monotonic()
-                # Log raw stick values whenever they move, so stick health is
-                # visible directly in the terminal (rate-limited per side).
-                baseline = stick_log_baseline[side]
-                stick = tuple(payload["stick"])
-                if baseline is None:
-                    stick_log_baseline[side] = stick
-                elif (
-                    max(
-                        abs(stick[0] - baseline[0]),
-                        abs(stick[1] - baseline[1]),
+        log_baseline = {side: None for side in controllers}
+        log_deadline = {side: 0.0 for side in controllers}
+        with open(args.stick_log, "a", encoding="utf-8") as stick_log:
+            stick_log.write(f"# reader restarted at {time.time():.1f}\n")
+            while not stop:
+                started = time.monotonic()
+                sequence += 1
+                for side, controller in controllers.items():
+                    payload = sample(controller, side, sequence)
+                    signature = (
+                        tuple(payload["stick"]),
+                        tuple(payload["orientation_rpy"]),
+                        tuple(sorted(payload["buttons"].items())),
                     )
-                    > 500
-                    and now - stick_log_time[side] > 1.0
-                ):
-                    stick_log_time[side] = now
-                    stick_log_baseline[side] = stick
-                    print(
-                        f"[{side}] stick H={stick[0]:.0f} V={stick[1]:.0f}",
-                        flush=True,
-                    )
-                if signature == signatures[side]:
-                    if frozen_since[side] is None:
-                        frozen_since[side] = now
-                    elif (
-                        now - frozen_since[side] > 1.5
-                        and now - reconnect_cooldown[side] > 5.0
+                    now = time.monotonic()
+                    stick = tuple(payload["stick"])
+                    # Append raw sticks to the on-disk log whenever they move
+                    # (or every 10 s), so stick health can be inspected after
+                    # the fact without timing coordination.
+                    stick = tuple(payload["stick"])
+                    log_last = log_baseline[side]
+                    if (
+                        log_last is None
+                        or max(
+                            abs(stick[0] - log_last[0]),
+                            abs(stick[1] - log_last[1]),
+                        )
+                        >= 2
+                        or now >= log_deadline[side]
                     ):
-                        # The HID read thread can die silently on a Bluetooth
-                        # hiccup (the native library has no read-loop error
-                        # handling), leaving the input report frozen. Reopen
-                        # the device so stale sticks/buttons cannot be sent.
-                        reconnect_cooldown[side] = now
+                        log_baseline[side] = stick
+                        log_deadline[side] = now + 10.0
+                        stick_log.write(
+                            f"{time.time():.2f} {side} H={stick[0]:.0f} "
+                            f"V={stick[1]:.0f} sh={int(payload['buttons']['shoulder'])}"
+                            f" sl={int(payload['buttons']['sl'])} "
+                            f"sr={int(payload['buttons']['sr'])}\n"
+                        )
+                    # Console print whenever the stick moves, so stick health
+                    # is visible directly in the terminal (rate-limited).
+                    baseline = stick_log_baseline[side]
+                    if baseline is None:
+                        stick_log_baseline[side] = stick
+                    elif (
+                        max(
+                            abs(stick[0] - baseline[0]),
+                            abs(stick[1] - baseline[1]),
+                        )
+                        > 200
+                        and now - stick_log_time[side] > 1.0
+                    ):
+                        stick_log_time[side] = now
+                        stick_log_baseline[side] = stick
                         print(
-                            f"[{side}] Joy-Con input report frozen; "
-                            "reopening the device",
+                            f"[{side}] stick H={stick[0]:.0f} V={stick[1]:.0f}",
                             flush=True,
                         )
-                        try:
-                            controller.disconnnect()
-                            controllers[side] = JoyconRobotics(
-                                device=side, without_rest_init=True
-                            )
-                            signatures[side] = None
-                            frozen_since[side] = None
-                            payload = sample(controllers[side], side, sequence)
-                        except Exception as exc:
+                    if signature == signatures[side]:
+                        if frozen_since[side] is None:
+                            frozen_since[side] = now
+                        elif (
+                            now - frozen_since[side] > 1.5
+                            and now - reconnect_cooldown[side] > 5.0
+                        ):
+                            # The HID read thread can die silently on a
+                            # Bluetooth hiccup (the native library has no
+                            # read-loop error handling), leaving the input
+                            # report frozen. Reopen the device so stale
+                            # sticks/buttons cannot be sent.
+                            reconnect_cooldown[side] = now
                             print(
-                                f"[{side}] reconnect failed ({exc}); "
-                                "will retry",
+                                f"[{side}] Joy-Con input report frozen; "
+                                "reopening the device",
                                 flush=True,
                             )
-                else:
-                    frozen_since[side] = None
-                signatures[side] = signature
-                publisher.send_string(
-                    json.dumps(payload, separators=(",", ":"))
-                )
-            time.sleep(max(0.0, period - (time.monotonic() - started)))
+                            try:
+                                controller.disconnnect()
+                                controllers[side] = JoyconRobotics(
+                                    device=side, without_rest_init=True
+                                )
+                                signatures[side] = None
+                                frozen_since[side] = None
+                                stick_log_baseline[side] = None
+                                log_baseline[side] = None
+                                payload = sample(controllers[side], side, sequence)
+                            except Exception as exc:
+                                print(
+                                    f"[{side}] reconnect failed ({exc}); "
+                                    "will retry",
+                                    flush=True,
+                                )
+                    else:
+                        frozen_since[side] = None
+                    signatures[side] = signature
+                    publisher.send_string(
+                        json.dumps(payload, separators=(",", ":"))
+                    )
+                time.sleep(max(0.0, period - (time.monotonic() - started)))
     finally:
         for controller in controllers.values():
             try:

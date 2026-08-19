@@ -253,10 +253,17 @@ class JointMapper:
             lower = min(calibrated_limits)
             upper = max(calibrated_limits)
             if q < lower or q > upper:
-                raise ValueError(
-                    f"{urdf_name} {q:.6f} is outside calibrated "
-                    f"[{lower:.6f}, {upper:.6f}]"
-                )
+                # The measured folded Home sits exactly on the calibrated
+                # boundary and small encoder drift pushes it a few epsilons
+                # over; accept and clamp such marginal overflows instead of
+                # rejecting every goal while the robot rests at Home.
+                tolerance = 1.0e-4
+                if q < lower - tolerance or q > upper + tolerance:
+                    raise ValueError(
+                        f"{urdf_name} {q:.6f} is outside calibrated "
+                        f"[{lower:.6f}, {upper:.6f}]"
+                    )
+                q = max(lower, min(upper, q))
         ratio = float(entry.get("joint_per_encoder_ratio", 1.0))
         sign = int(entry["sign"])
         if ratio == 0.0 or sign not in (-1, 1):
