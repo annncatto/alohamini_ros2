@@ -73,19 +73,26 @@ class AlohaMiniLeRobotBridge(Node):
             "swap_xy": False,
             "wheel_radius": 0.063,
             "base_radius": 0.195,
+            "arm_mapping_dir": "",
         }
         for name, value in defaults.items():
             self.declare_parameter(name, value)
 
         calibration_share = Path(get_package_share_directory("alohamini_calibration"))
+        mapping_override = str(self.get_parameter("arm_mapping_dir").value).strip()
+        mapping_dir = (
+            Path(mapping_override).expanduser()
+            if mapping_override
+            else calibration_share / "config" / "hardware"
+        )
+        if not mapping_dir.is_dir():
+            raise ValueError(f"arm_mapping_dir is not a directory: {mapping_dir}")
         joint_calibrations = {}
         for side in ("left", "right"):
-            path = (
-                calibration_share
-                / f"config/hardware/hardware_joint_map_{side}.yaml"
-            )
+            path = mapping_dir / f"hardware_joint_map_{side}.yaml"
             with path.open(encoding="utf-8") as stream:
                 joint_calibrations[side] = yaml.safe_load(stream)
+        self.get_logger().info(f"Using arm mapping directory: {mapping_dir}")
         with (calibration_share / "config/hardware/lift_axis.yaml").open(
             encoding="utf-8"
         ) as stream:

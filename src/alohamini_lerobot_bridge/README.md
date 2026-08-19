@@ -26,6 +26,12 @@ The encoder-derived Host lift range is calibrated as physical `[0, 600] mm`
 and mapped to URDF `vertical_move [-0.3, +0.3] m`; values beyond the confirmed
 mechanical endpoints are clamped for visualization.
 
+Arm tick-to-URDF mappings may be selected per physical robot with the
+`arm_mapping_dir` launch argument. The directory must contain reviewed
+`hardware_joint_map_left.yaml` and `hardware_joint_map_right.yaml` files. This
+changes only encoder mapping; it does not change CAD joint frames or URDF
+geometry.
+
 This version does not connect lidar, an external odometer, or an IMU, and does
 not launch SLAM, Nav2, Servo, or state estimation. It publishes neither
 `/odom` nor `odom -> base_link` TF.

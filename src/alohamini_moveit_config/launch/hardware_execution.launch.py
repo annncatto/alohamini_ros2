@@ -55,12 +55,16 @@ def generate_launch_description() -> LaunchDescription:
     return LaunchDescription(
         [
             DeclareLaunchArgument("host", default_value="127.0.0.1"),
+            DeclareLaunchArgument("arm_mapping_dir", default_value=""),
             DeclareLaunchArgument("use_rviz", default_value="true"),
             IncludeLaunchDescription(
                 PythonLaunchDescriptionSource(
                     str(bridge_share / "launch" / "bridge.launch.py")
                 ),
-                launch_arguments={"host": LaunchConfiguration("host")}.items(),
+                launch_arguments={
+                    "host": LaunchConfiguration("host"),
+                    "arm_mapping_dir": LaunchConfiguration("arm_mapping_dir"),
+                }.items(),
             ),
             # /joint_states comes exclusively from the bridge's measured Host state.
             Node(

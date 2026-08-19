@@ -14,6 +14,7 @@ def generate_launch_description() -> LaunchDescription:
     return LaunchDescription(
         [
             DeclareLaunchArgument("host", default_value="127.0.0.1"),
+            DeclareLaunchArgument("arm_mapping_dir", default_value=""),
             IncludeLaunchDescription(
                 PythonLaunchDescriptionSource(
                     str(description_share / "launch" / "description.launch.py")
@@ -28,6 +29,7 @@ def generate_launch_description() -> LaunchDescription:
                     str(bridge_share / "config" / "bridge.yaml"),
                     {
                         "host": LaunchConfiguration("host"),
+                        "arm_mapping_dir": LaunchConfiguration("arm_mapping_dir"),
                     },
                 ],
             ),

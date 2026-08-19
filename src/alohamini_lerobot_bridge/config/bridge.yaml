@@ -32,3 +32,6 @@ alohamini_lerobot_bridge:
     swap_xy: false
     wheel_radius: 0.063
     base_radius: 0.195
+    # Empty uses the packaged authoritative mapping. Set to a reviewed
+    # machine-profile directory containing hardware_joint_map_{left,right}.yaml.
+    arm_mapping_dir: ""

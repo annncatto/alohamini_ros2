@@ -71,3 +71,40 @@ Candidate and `calibrated: false` values are not promoted by directory
 placement. Their status remains part of the authoritative record. Downstream
 projects consume exports from this package and do not reverse-sync their local
 copies over these files.
+
+## Per-robot folded-Home mapping
+
+`AlohaMiniRobot.json` contains EEPROM homing offsets and LeRobot normalization
+ranges. It does not contain the live `Present_Position` at the folded CAD Home,
+so JSON alone cannot establish an exact URDF zero/reference mapping.
+
+With the Host running and both follower arms stationary in the verified folded
+Home (both grippers closed), pull the machine JSON and capture current arm ticks
+over the read-only 5556 state endpoint:
+
+```bash
+ros2 run alohamini_calibration sync_arm_mapping \
+  --ssh-target pi5@192.168.3.73 \
+  --host 192.168.3.73 \
+  --output-dir ~/.config/alohamini/192.168.3.73
+```
+
+The tool uses `rsync` for the JSON and ZMQ `:state` for the live capture. It
+never opens command port 5555, serial devices, changes torque, homes an axis, or
+writes EEPROM. It cross-checks the running Host ranges against the pulled JSON,
+rejects moving captures, and writes:
+
+- `AlohaMiniRobot.json`;
+- `hardware_joint_map_left.yaml`;
+- `hardware_joint_map_right.yaml`.
+
+The output remains a candidate until RViz and collision validation pass. Load a
+reviewed profile without modifying the CAD/URDF definition:
+
+```bash
+ros2 launch alohamini_moveit_config hardware_execution.launch.py \
+  host:=192.168.3.73 \
+  arm_mapping_dir:=$HOME/.config/alohamini/192.168.3.73
+```
+
+The bridge remains read-only until `command_enable` is explicitly called.

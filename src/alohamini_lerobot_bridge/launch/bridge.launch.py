@@ -12,6 +12,7 @@ def generate_launch_description() -> LaunchDescription:
     return LaunchDescription(
         [
             DeclareLaunchArgument("host", default_value="127.0.0.1"),
+            DeclareLaunchArgument("arm_mapping_dir", default_value=""),
             Node(
                 package="alohamini_lerobot_bridge",
                 executable="bridge_node",
@@ -21,6 +22,7 @@ def generate_launch_description() -> LaunchDescription:
                     str(share / "config" / "bridge.yaml"),
                     {
                         "host": LaunchConfiguration("host"),
+                        "arm_mapping_dir": LaunchConfiguration("arm_mapping_dir"),
                     },
                 ],
             ),
