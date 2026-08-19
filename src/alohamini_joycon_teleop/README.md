@@ -150,6 +150,16 @@ Hardware mode starts the existing bridge read-only and does not call its
 ros2 launch alohamini_joycon_teleop hardware.launch.py host:=ROBOT_IP
 ```
 
+For a robot with its own machine-specific arm mapping (produced by
+`ros2 run alohamini_calibration sync_arm_mapping`), pass the directory:
+
+```bash
+ros2 launch alohamini_joycon_teleop hardware.launch.py \
+  host:=ROBOT_IP arm_mapping_dir:=$HOME/.config/alohamini/ROBOT_IP
+```
+
+An empty `arm_mapping_dir` keeps the installed default mapping.
+
 The RViz started by this launch uses the Joy-Con config (robot model + TCP
 markers) without the MoveIt interactive TCP marker, which would fight the
 Joy-Con controller. Disable it with `joycon_rviz:=false`.

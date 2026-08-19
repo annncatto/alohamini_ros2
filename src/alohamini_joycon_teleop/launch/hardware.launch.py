@@ -19,6 +19,11 @@ def generate_launch_description() -> LaunchDescription:
     return LaunchDescription(
         [
             DeclareLaunchArgument("host"),
+            # Machine-specific arm mapping produced by
+            # `ros2 run alohamini_calibration sync_arm_mapping` (e.g.
+            # ~/.config/alohamini/192.168.3.73). Empty = the installed
+            # default mapping.
+            DeclareLaunchArgument("arm_mapping_dir", default_value=""),
             # Named joycon_rviz so the included hardware_execution launch's
             # use_rviz:=false (a global launch configuration) cannot shadow it.
             DeclareLaunchArgument("joycon_rviz", default_value="true"),
@@ -33,6 +38,7 @@ def generate_launch_description() -> LaunchDescription:
                 ),
                 launch_arguments={
                     "host": LaunchConfiguration("host"),
+                    "arm_mapping_dir": LaunchConfiguration("arm_mapping_dir"),
                     # The MoveIt RViz panel has an interactive TCP marker that
                     # fights the Joy-Con controller; the Joy-Con launch uses
                     # its own RViz config without it.
