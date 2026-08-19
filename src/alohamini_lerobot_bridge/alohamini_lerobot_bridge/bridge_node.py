@@ -145,6 +145,7 @@ class AlohaMiniLeRobotBridge(Node):
         self.latest_positions: dict[str, float] = {}
         self.robot_metadata: dict | None = None
         self.last_observation_monotonic: float | None = None
+        self.last_send_observation_count = -1
         self.request_expirations = 0
         self.malformed_responses = 0
         self.invalid_observations = 0
@@ -404,8 +405,17 @@ class AlohaMiniLeRobotBridge(Node):
         )
         if action is None:
             return
+        # Pace the command stream to the Host loop: the Host processes one
+        # command and answers one observation request per loop iteration, so
+        # a fresh observation means the previous command has been consumed.
+        # Sending faster only queues stale commands on the Host socket and
+        # makes the robot lag the joystick; gating here bounds the backlog
+        # to one command without touching the Host.
+        if self.observation_count == self.last_send_observation_count:
+            return
         if self.transport.send_action(action):
             self.command_count += 1
+            self.last_send_observation_count = self.observation_count
 
     @staticmethod
     def trajectory_samples(goal) -> tuple[TrajectorySample, ...]:

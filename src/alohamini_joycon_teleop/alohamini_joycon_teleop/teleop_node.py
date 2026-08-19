@@ -164,12 +164,14 @@ class JoyConTeleop(Node):
             "arm_goal_max_velocity_rad_s": 0.4,
             "avoid_collisions": True,
             "arm_trajectory_duration_sec": 0.15,
+            "finish_last_target": True,
             "base_linear_speed_m_s": 0.10,
             "base_angular_speed_rad_s": 0.5,
             "lift_speed_m_s": 0.02,
             "lift_command_period_sec": 0.15,
             "lift_hold": True,
             "lift_hold_tolerance_m": 0.005,
+            "lift_track_margin_rad": 0.01,
             "auto_enable_commands": True,
             "preview_joint_states_topic": "/alohamini_plan_only/joint_states",
             "measured_joint_states_topic": "/joint_states",
@@ -670,7 +672,9 @@ class JoyConTeleop(Node):
                 )
                 return
             arm.goal_handle = handle
-            if not arm.active:
+            if not arm.active and not bool(
+                self.get_parameter("finish_last_target").value
+            ):
                 handle.cancel_goal_async()
             result = handle.get_result_async()
             result.add_done_callback(partial(self.on_arm_result, side, handle))
@@ -683,8 +687,6 @@ class JoyConTeleop(Node):
             # Superseded by a newer continuously streamed goal; silent.
             return
         arm.goal_handle = None
-        if not arm.active:
-            return
         try:
             result = future.result()
             if result.error_code != result.SUCCESSFUL:
@@ -692,15 +694,26 @@ class JoyConTeleop(Node):
                     f"[{side}] arm goal ended with code "
                     f"{result.error_code}: {result.error_string or 'unknown'}"
                 )
+            elif not arm.active:
+                self.get_logger().info(
+                    f"[{side}] finished the last commanded TCP target"
+                )
         except Exception:
             pass
 
-    def deactivate_arm(self, side: str) -> None:
-        """Stop new arm targets; keep the last latch so Home re-latch and the
-        TCP marker persist while the arm is idle."""
+    def deactivate_arm(self, side: str, cancel_goal: bool = False) -> None:
+        """Stop generating new arm targets; keep the last latch so Home
+        re-latch and the TCP marker persist while the arm is idle."""
         arm = self.arms[side]
         if arm.active and self.hardware_mode and arm.goal_handle is not None:
-            arm.goal_handle.cancel_goal_async()
+            if cancel_goal or not bool(
+                self.get_parameter("finish_last_target").value
+            ):
+                arm.goal_handle.cancel_goal_async()
+            else:
+                self.get_logger().info(
+                    f"[{side}] released; finishing the last commanded TCP target"
+                )
         arm.active = False
 
     def update_arm(
@@ -712,7 +725,9 @@ class JoyConTeleop(Node):
     ) -> None:
         arm = self.arms[side]
         if sample is None:
-            self.deactivate_arm(side)
+            # Stale/disconnected input still stops in-flight motion: the
+            # operator is not in control.
+            self.deactivate_arm(side, cancel_goal=True)
             arm.joy_anchor_rpy = None
             return
         buttons = sample["buttons"]
@@ -1006,6 +1021,16 @@ class JoyConTeleop(Node):
         if not self.hardware_mode:
             self.positions["vertical_move"] = self.lift_target
             return
+        # Track the target to the measured height with a small margin so the
+        # servo only ever chases bounded errors: if the mechanism stalls at a
+        # stop or under load, the target stops advancing instead of pushing at
+        # full velocity into a stall (the Host lift path has no current
+        # limiter like the arm joints do).
+        margin = float(self.get_parameter("lift_track_margin_rad").value)
+        self.lift_target = max(
+            self.measured_lift - margin,
+            min(self.measured_lift + margin, self.lift_target),
+        )
         period = float(self.get_parameter("lift_command_period_sec").value)
         if now - self.last_lift_goal < period:
             return

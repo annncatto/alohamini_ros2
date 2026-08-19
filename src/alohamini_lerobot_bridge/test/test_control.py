@@ -423,3 +423,65 @@ def test_disable_stops_active_lift_without_stale_position_hold():
         "lift_axis.vel": 0.0,
     }
     assert stale_stop == {"x.vel": 0.0, "y.vel": 0.0, "theta.vel": 0.0}
+
+
+def test_lift_hold_persists_indefinitely_after_goal_success():
+    composer = _composer()
+    composer.enable()
+    measured = _measured()
+    measured["vertical_move"] = -0.3
+    composer.start_trajectory(
+        "lift",
+        ["vertical_move"],
+        [TrajectorySample(1.0, {"vertical_move": -0.15})],
+        measured,
+        True,
+        now=0.0,
+    )
+    # The measured lift tracks the streamed command (30 Hz cadence).
+    for tick in (index * 0.05 for index in range(1, 23)):
+        action = composer.compose(measured, _metadata(), True, now=tick)
+        measured["vertical_move"] = composer.mapper.lift_height_to_urdf(
+            action["lift_axis.height_mm"]
+        )
+    # Long after the goal ended the velocity-mode lift must keep being
+    # commanded at the held height so the Host holds the axis (self-lock).
+    for tick in (2.0, 10.0, 3600.0):
+        action = composer.compose(measured, _metadata(), True, now=tick)
+        assert action is not None
+        assert composer.mapper.lift_height_to_urdf(
+            action["lift_axis.height_mm"]
+        ) == pytest.approx(-0.15, abs=1e-6)
+
+
+def test_lift_hold_is_preempted_by_a_new_goal():
+    composer = _composer()
+    composer.enable()
+    measured = _measured()
+    measured["vertical_move"] = -0.3
+    composer.start_trajectory(
+        "lift",
+        ["vertical_move"],
+        [TrajectorySample(0.2, {"vertical_move": -0.15})],
+        measured,
+        True,
+        now=0.0,
+    )
+    for tick in (0.05, 0.1, 0.15, 0.2, 0.25):
+        action = composer.compose(measured, _metadata(), True, now=tick)
+        measured["vertical_move"] = composer.mapper.lift_height_to_urdf(
+            action["lift_axis.height_mm"]
+        )
+    composer.start_trajectory(
+        "lift",
+        ["vertical_move"],
+        [TrajectorySample(0.2, {"vertical_move": -0.2})],
+        measured,
+        True,
+        now=1.0,
+    )
+    action = composer.compose(measured, _metadata(), True, now=1.05)
+    assert action is not None
+    assert composer.mapper.lift_height_to_urdf(
+        action["lift_axis.height_mm"]
+    ) < -0.15

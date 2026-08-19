@@ -118,6 +118,17 @@ second per arm), e.g. `[right] IK failed: NO_IK_SOLUTION (unreachable pose)
   and re-latches the achieved pose, so position teleoperation keeps working
   when the 6-DOF pose is unreachable.
 
+## Troubleshooting: laggy robot following on real hardware
+
+The bridge paces its command stream to the Host loop: it sends at most one
+command per fresh Host observation (the Host consumes one command and answers
+one observation request per loop iteration). This keeps the Host-side command
+queue at one, so the robot follows the joystick with a constant one-loop lag
+instead of accumulating stale commands — without modifying the Host. If the
+robot still moves in visible steps, the Host loop itself is slow (e.g. camera
+reads); run the Host with `--profile_timing` to measure it, but no latency
+threshold applies to the network.
+
 ## Troubleshooting: flickering robot model in RViz
 
 The preview RViz reads `/tf` and `/robot_description` from the shared ROS

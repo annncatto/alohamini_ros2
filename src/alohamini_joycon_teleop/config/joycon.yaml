@@ -24,12 +24,14 @@ alohamini_joycon_teleop:
     arm_goal_max_velocity_rad_s: 0.4
     avoid_collisions: true
     arm_trajectory_duration_sec: 0.15
+    finish_last_target: true
     base_linear_speed_m_s: 0.10
     base_angular_speed_rad_s: 0.5
     lift_speed_m_s: 0.02
     lift_command_period_sec: 0.15
     lift_hold: true
     lift_hold_tolerance_m: 0.005
+    lift_track_margin_rad: 0.01
     auto_enable_commands: true
     preview_joint_states_topic: /alohamini_plan_only/joint_states
     measured_joint_states_topic: /joint_states

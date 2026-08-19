@@ -75,7 +75,9 @@ class TrajectoryResource:
             raise ValueError(
                 f"{name} goal_time_tolerance must be finite and non-negative"
             )
-        if not math.isfinite(self.hold_duration) or self.hold_duration < 0.0:
+        if self.hold_duration != math.inf and (
+            not math.isfinite(self.hold_duration) or self.hold_duration < 0.0
+        ):
             raise ValueError(f"{name} hold_duration must be finite and non-negative")
         self.goal_id = 0
         self.active_goal_id: int | None = None
@@ -314,7 +316,14 @@ class CommandComposer:
                 lift_tracking_error,
                 lift_goal_tolerance,
                 goal_time_tolerance,
-                hold_duration,
+                # The lift servo runs in velocity mode (the Host applies a
+                # P-controller on the height error). Velocity-mode servos do
+                # not self-lock: once the command stream stops, nothing
+                # resists the leadscrew back-driving and the axis sinks.
+                # Hold the last commanded height indefinitely so the Host
+                # keeps applying corrective velocities; new goals preempt
+                # the hold seamlessly.
+                math.inf,
             ),
         }
         self.enabled = False
