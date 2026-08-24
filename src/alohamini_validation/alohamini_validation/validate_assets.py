@@ -151,17 +151,32 @@ def validate_tree(model: UrdfKinematics) -> None:
     joints = model.root.findall("joint")
     children = [joint.find("child").get("link") for joint in joints]
     parents = [joint.find("parent").get("link") for joint in joints]
-    assert len(links) == 31 and len(joints) == 30
+    assert len(links) == 32 and len(joints) == 31
     assert len(children) == len(set(children))
     assert links - set(children) == {"root"}
     assert set(children) <= links and set(parents) <= links
     assert {"wheel1", "wheel2", "wheel3"} <= links
     assert not {"Link2_dp", "Link3_dp", "Link4_dp"} & links
     joints_by_name = {joint.get("name"): joint for joint in joints}
+    cad_joint = joints_by_name["base_cad_joint"]
+    assert cad_joint.get("type") == "fixed"
+    assert cad_joint.find("parent").get("link") == "base_link"
+    assert cad_joint.find("child").get("link") == "base_cad_link"
+    assert np.allclose(
+        np.fromstring(cad_joint.find("origin").get("xyz"), sep=" "),
+        [0.0, 0.0, 0.0],
+    )
+    assert np.allclose(
+        np.fromstring(cad_joint.find("origin").get("rpy"), sep=" "),
+        [0.0, 0.0, math.pi / 2.0],
+    )
+    cad_rotation = origin_transform(cad_joint)[:3, :3]
+    assert np.allclose(cad_rotation @ [0.0, -1.0, 0.0], [1.0, 0.0, 0.0])
+    assert np.allclose(cad_rotation @ [1.0, 0.0, 0.0], [0.0, 1.0, 0.0])
     for wheel in ("wheel1", "wheel2", "wheel3"):
         joint = joints_by_name[f"{wheel}_joint"]
         assert joint.get("type") == "continuous"
-        assert joint.find("parent").get("link") == "base_link"
+        assert joint.find("parent").get("link") == "base_cad_link"
         assert joint.find("child").get("link") == wheel
 
 
@@ -330,7 +345,10 @@ def validate_collision(description: Path, validation: Path) -> None:
         assert len(moving.findall("collision/geometry/mesh")) == int(
             baseline["moving_jaw_vhacd_pieces_per_side"]
         )
-    base_collision = links["base_link"].findall("collision/geometry/mesh")
+    assert not links["base_link"].findall("visual")
+    assert not links["base_link"].findall("collision")
+    assert links["base_link"].find("inertial") is None
+    base_collision = links["base_cad_link"].findall("collision/geometry/mesh")
     assert len(base_collision) == 1 and base_collision[0].get("filename").endswith("/base_link.STL")
     passive = {joint.get("name") for joint in srdf.findall("passive_joint")}
     assert passive == {"wheel1_joint", "wheel2_joint", "wheel3_joint"}
@@ -386,6 +404,7 @@ def validate_lidar_three_wheel(description: Path) -> None:
     integrated_joints = {joint.get("name"): joint for joint in integrated.findall("joint")}
     for wheel_name, values in expected["authoritative_wheels"].items():
         joint = integrated_joints[f"{wheel_name}_joint"]
+        assert joint.find("parent").get("link") == "base_cad_link"
         origin = joint.find("origin")
         assert np.allclose(np.fromstring(origin.get("xyz"), sep=" "), values["position_xyz_m"])
         assert np.allclose(np.fromstring(origin.get("rpy"), sep=" "), values["orientation_rpy_rad"])

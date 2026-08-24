@@ -7,6 +7,7 @@ from ament_index_python.packages import get_package_share_directory
 from alohamini_joycon_teleop.mapping import (
     LEVEL_TCP_QUATERNION,
     base_command,
+    integrate_base_preview,
     normalize_stick,
     step_orientation_toward,
     tcp_button_delta,
@@ -82,6 +83,12 @@ def test_base_command_translation():
     assert base_command([(0.0, 1.0), (0.7, 0.0)], 0.2, 0.5) == pytest.approx(
         (0.2, -0.14, 0.0)
     )
+
+
+def test_base_preview_uses_rep103_axes():
+    assert integrate_base_preview(
+        [1.0, 2.0, 0.25], 0.4, -0.2, 0.5, 0.5
+    ) == pytest.approx([1.2, 1.9, 0.5])
 
 
 def test_orientation_step_is_rate_limited():

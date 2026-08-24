@@ -138,3 +138,14 @@ def base_command(
         -linear_speed * horizontal,
         0.0,
     )
+
+
+def integrate_base_preview(
+    pose: list[float], vx: float, vy: float, yaw_rate: float, dt: float
+) -> list[float]:
+    """Integrate a preview pose in REP-103 ``base_link`` coordinates."""
+    return [
+        float(pose[0]) + float(vx) * float(dt),
+        float(pose[1]) + float(vy) * float(dt),
+        float(pose[2]) + float(yaw_rate) * float(dt),
+    ]

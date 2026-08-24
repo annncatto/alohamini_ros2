@@ -1,14 +1,14 @@
 schema_version: 1
 model: alohamini2pro_moveit
 geometry_counts:
-  links: 31
-  joints: 30
+  links: 32
+  joints: 31
   visuals: 26
   collisions: 36
   collision_boxes: 4
   collision_cylinders: 3
   collision_meshes: 29
-  srdf_disabled_pairs: 37
+  srdf_disabled_pairs: 38
 moving_jaw_vhacd_pieces_per_side: 6
 state_validity:
   reference_clear:
@@ -25,9 +25,9 @@ state_validity:
       left_shoulder_pan: -1.5
       right_shoulder_pan: -2.0
     contact_pairs:
-      - [base_link, right_Lower_Arm]
+      - [base_cad_link, right_Lower_Arm]
 notes:
-  - The exact base_link mesh remains collision geometry.
+  - The exact base mesh remains collision geometry on base_cad_link; base_link is the REP-103 control frame.
   - Arm rigid links and wrist cameras use symmetric shared VHACD meshes.
   - Moving jaws retain the reviewed six-piece VHACD collision model on each side.
   - The measured installed stowed pose is an explicit state-validity acceptance sample.

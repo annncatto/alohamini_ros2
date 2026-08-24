@@ -42,5 +42,8 @@ ros2 launch alohamini_description view_lidar_three_wheel.launch.py
 ```
 
 The experimental C++ `ros2_control` backend is not part of this integration;
-the LeRobot Host remains the physical motor-bus owner. The ROS orientation of
-`base_link` still requires a separate REP-103 audit.
+the LeRobot Host remains the physical motor-bus owner. `base_link` is the
+REP-103 control frame (+x forward, +y left, +z up). A fixed +pi/2 yaw transform
+to `base_cad_link` preserves the imported CAD coordinates without rewriting
+mesh origins or hardware kinematics: CAD -y maps to ROS +x (forward), and CAD
++x maps to ROS +y (left).

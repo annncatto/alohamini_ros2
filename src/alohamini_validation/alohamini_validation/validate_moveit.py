@@ -175,6 +175,7 @@ class Validator(Node):
 
 def main() -> None:
     validation = Path(get_package_share_directory("alohamini_validation"))
+    calibration = Path(get_package_share_directory("alohamini_calibration"))
     golden = load_yaml(validation / "config/fk_golden.yaml")
     collision = load_yaml(validation / "config/collision_baseline.yaml")
     rclpy.init()
@@ -199,7 +200,16 @@ def main() -> None:
         print("[PASS] MoveIt IK reachable targets")
 
         for state_name, state in collision["state_validity"].items():
-            valid, pairs = node.state_validity({key: float(value) for key, value in state["joints"].items()})
+            values = state.get("joints")
+            if values is None:
+                source = str(state["source"])
+                prefix = "alohamini_calibration/"
+                assert source.startswith(prefix), source
+                source_data = load_yaml(calibration / source.removeprefix(prefix))
+                values = source_data["stowed_joint_positions"]
+            valid, pairs = node.state_validity(
+                {key: float(value) for key, value in values.items()}
+            )
             assert valid is bool(state["valid"]), f"{state_name}: valid={valid}, contacts={sorted(pairs)}"
             expected_pairs = {tuple(pair) for pair in state.get("contact_pairs", [])}
             assert pairs == expected_pairs, f"{state_name}: contacts={sorted(pairs)}"

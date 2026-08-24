@@ -40,7 +40,10 @@ def main() -> None:
         left = translation(buffer.lookup_transform("root", "left_tcp", rclpy.time.Time()))
         right = translation(buffer.lookup_transform("root", "right_tcp", rclpy.time.Time()))
         assert all(math.isfinite(value) for value in (*left, *right))
-        assert math.isclose(left[1], right[1], abs_tol=1e-6)
+        # Both arm chains have the same forward reach. The CAD subtree adapter
+        # maps the old CAD -y forward axis onto REP-103 base_link +x; left/right
+        # separation is therefore carried by y and must not be compared here.
+        assert math.isclose(left[0], right[0], abs_tol=1e-6)
         assert math.isclose(left[2], right[2], abs_tol=1e-6)
         print(f"[PASS] TF tree: {len(frames)} frames, root -> both TCPs available")
         print(f"       left_tcp={left}, right_tcp={right}")

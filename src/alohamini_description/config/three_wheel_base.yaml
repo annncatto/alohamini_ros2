@@ -70,7 +70,9 @@ wheel_clearance_adjustment:
   unchanged: [joint_orientation, joint_axis, wheel_radius, navigation_kinematics]
 
 integration_constraints:
-  base_link_ros_axis_convention: unaudited
+  base_link_ros_axis_convention: verified_rep103_x_forward_y_left_z_up
+  cad_geometry_parent: base_cad_link
+  base_link_to_cad_yaw_rad: 1.5707963267948966
   original_cad_link_names: [Link2_dp, Link3_dp, Link4_dp]
   authoritative_link_names: [wheel1, wheel2, wheel3]
   active_whole_robot_variant: current_cad_geometry_continuous_wheel_joints

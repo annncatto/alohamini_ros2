@@ -30,7 +30,8 @@
     <limit effort="500" lower="-6.28" upper="6.28" velocity="1.0" />
     <dynamics damping="100.0" friction="10" />
   </joint>
-  <link name="base_link">
+  <link name="base_link" />
+  <link name="base_cad_link">
     <inertial>
       <origin xyz="-0.000612633316587952 0.0211982181323527 0.18480862701929" rpy="0 0 0" />
       <mass value="9.6" />
@@ -52,6 +53,11 @@
       </geometry>
     </collision>
   </link>
+  <joint name="base_cad_joint" type="fixed">
+    <origin xyz="0 0 0" rpy="0 0 1.5707963267948966" />
+    <parent link="base_link" />
+    <child link="base_cad_link" />
+  </joint>
   <link name="vertical_link">
     <inertial>
       <origin xyz="-0.000482088964298404 -0.0410546516336574 0.425062657231215" rpy="0 0 0" />
@@ -76,7 +82,7 @@
   </link>
   <joint name="vertical_move" type="prismatic">
     <origin xyz="0 0 0.096196" rpy="0 0 0" />
-    <parent link="base_link" />
+    <parent link="base_cad_link" />
     <child link="vertical_link" />
     <axis xyz="0 0 1" />
     <limit lower="-0.3" upper="0.3" effort="74.2" velocity="0.05" />
@@ -133,7 +139,7 @@
   </link>
   <joint name="wheel1_joint" type="continuous">
     <origin xyz="-0.130229464 0.074533188 0.063355" rpy="3.3411E-05 1.5707 2.618" />
-    <parent link="base_link" />
+    <parent link="base_cad_link" />
     <child link="wheel1" />
     <axis xyz="-8.7287E-05 0 -1" />
   </joint>
@@ -159,7 +165,7 @@
   </link>
   <joint name="wheel2_joint" type="continuous">
     <origin xyz="-0.001402062 -0.149010130 0.063355" rpy="1.5708 1.5708 0" />
-    <parent link="base_link" />
+    <parent link="base_cad_link" />
     <child link="wheel2" />
     <axis xyz="0 0 -1" />
   </joint>
@@ -185,7 +191,7 @@
   </link>
   <joint name="wheel3_joint" type="continuous">
     <origin xyz="0.127692644 0.074396362 0.063355" rpy="-1.5708 0 -1.0472" />
-    <parent link="base_link" />
+    <parent link="base_cad_link" />
     <child link="wheel3" />
     <axis xyz="0 0 -1" />
   </joint>
@@ -213,7 +219,7 @@
   </link>
   <joint name="back_camera_joint5_dp" type="fixed">
     <origin xyz="0.00034085 0.16827 1.0972" rpy="-3.1416 -0.63429 1.5708" />
-    <parent link="base_link" />
+    <parent link="base_cad_link" />
     <child link="back_camera" />
     <axis xyz="0 0 0" />
   </joint>
@@ -241,7 +247,7 @@
   </link>
   <joint name="front_camera_joint6_dp" type="fixed">
     <origin xyz="0.000309285647814801 -0.0549084504780031 1.10145847792887" rpy="-3.14159265358978 0.78538567812397 1.5707963267949" />
-    <parent link="base_link" />
+    <parent link="base_cad_link" />
     <child link="front_camera" />
     <axis xyz="0 0 0" />
   </joint>

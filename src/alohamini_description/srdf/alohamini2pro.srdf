@@ -97,13 +97,14 @@
   <disable_collisions link1="root" link2="root_x_link" reason="Adjacent" />
   <disable_collisions link1="root_x_link" link2="root_y_link" reason="Adjacent" />
   <disable_collisions link1="root_y_link" link2="base_link" reason="Adjacent" />
-  <disable_collisions link1="base_link" link2="vertical_link" reason="Adjacent" />
+  <disable_collisions link1="base_link" link2="base_cad_link" reason="Adjacent" />
+  <disable_collisions link1="base_cad_link" link2="vertical_link" reason="Adjacent" />
   <disable_collisions link1="vertical_link" link2="chest_camera" reason="Adjacent" />
-  <disable_collisions link1="base_link" link2="wheel1" reason="Adjacent" />
-  <disable_collisions link1="base_link" link2="wheel2" reason="Adjacent" />
-  <disable_collisions link1="base_link" link2="wheel3" reason="Adjacent" />
-  <disable_collisions link1="base_link" link2="back_camera" reason="Adjacent" />
-  <disable_collisions link1="base_link" link2="front_camera" reason="Adjacent" />
+  <disable_collisions link1="base_cad_link" link2="wheel1" reason="Adjacent" />
+  <disable_collisions link1="base_cad_link" link2="wheel2" reason="Adjacent" />
+  <disable_collisions link1="base_cad_link" link2="wheel3" reason="Adjacent" />
+  <disable_collisions link1="base_cad_link" link2="back_camera" reason="Adjacent" />
+  <disable_collisions link1="base_cad_link" link2="front_camera" reason="Adjacent" />
   <disable_collisions link1="vertical_link" link2="left_Base" reason="Adjacent" />
   <disable_collisions link1="left_Base" link2="left_Rotation_Pitch" reason="Adjacent" />
   <disable_collisions link1="left_Rotation_Pitch" link2="left_Upper_Arm" reason="Adjacent" />
@@ -122,9 +123,9 @@
   <disable_collisions link1="right_wrist_yaw" link2="right_Fixed_Jaw" reason="Adjacent" />
   <disable_collisions link1="right_Fixed_Jaw" link2="right_Moving_Jaw" reason="Adjacent" />
   <disable_collisions link1="right_Fixed_Jaw" link2="right_camera" reason="Adjacent" />
-  <disable_collisions link1="base_link" link2="chest_camera" reason="default" />
-  <disable_collisions link1="base_link" link2="left_Base" reason="default" />
-  <disable_collisions link1="base_link" link2="right_Base" reason="default" />
+  <disable_collisions link1="base_cad_link" link2="chest_camera" reason="default" />
+  <disable_collisions link1="base_cad_link" link2="left_Base" reason="default" />
+  <disable_collisions link1="base_cad_link" link2="right_Base" reason="default" />
   <disable_collisions link1="left_Lower_Arm" link2="left_wrist_yaw" reason="default" />
   <disable_collisions link1="left_wrist_yaw" link2="left_Moving_Jaw" reason="default" />
   <disable_collisions link1="left_wrist_yaw" link2="left_camera" reason="default" />

@@ -26,6 +26,7 @@ from .mapping import (
     LEVEL_TCP_QUATERNION,
     base_command,
     euler_delta_quaternion,
+    integrate_base_preview,
     normalize_stick,
     quaternion_multiply,
     step_orientation_toward,
@@ -917,9 +918,9 @@ class JoyConTeleop(Node):
                 message.linear.x, message.linear.y, message.angular.z = vx, vy, yaw
                 self.cmd_vel_pub.publish(message)
             else:
-                self.preview_base[0] += vy * dt
-                self.preview_base[1] -= vx * dt
-                self.preview_base[2] += yaw * dt
+                self.preview_base = integrate_base_preview(
+                    self.preview_base, vx, vy, yaw, dt
+                )
                 for name, value in zip(ROOT_JOINTS, self.preview_base, strict=True):
                     self.positions[name] = value
                 self.base_pose_stale = True

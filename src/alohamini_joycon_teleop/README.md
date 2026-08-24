@@ -30,8 +30,8 @@ right arm. The left Joy-Con uses its d-pad where the right one uses X/B/Y/A.
   `lift_hold_tolerance_m` (`lift_hold: true`).
 - X (d-pad up) / B (d-pad down): that arm TCP forward / backward.
 - Y (d-pad left) / A (d-pad right): that arm TCP left / right.
-  All four directions are in the robot root frame (+x = robot left,
-  -y = robot forward), which both arm base frames share.
+  These directions are evaluated in that arm's preserved `{side}_Base` CAD
+  frame (+x = robot left, -y = robot forward).
 - Shoulder + X / B (L + d-pad up/down on the left, R + X/B on the right): that
   arm TCP up / down in the world frame (+z / -z; both arm base frames are
   root-aligned so this is world vertical).

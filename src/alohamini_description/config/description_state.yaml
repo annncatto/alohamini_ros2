@@ -6,7 +6,9 @@ frames:
   whole_robot_planning_reference: root
   arm_link_joint_convention: robotiwin_cad_preserved
   tcp: moveit_fixed_frames_integrated
-  base_link_ros_axis_convention: unaudited
+  base_link_ros_axis_convention: verified_rep103_x_forward_y_left_z_up
+  cad_geometry_frame: base_cad_link
+  base_link_to_cad_yaw_rad: 1.5707963267948966
 
 calibration_authority: alohamini_calibration
 collision_local_origins: arm_vhacd_meshes_match_visual_frames

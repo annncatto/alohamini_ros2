@@ -40,8 +40,9 @@ Runtime authority.
 The current whole-robot description uses `root` as its planning reference and
 preserves RoboTwin/CAD arm link and joint coordinates. Its current AlohaMini2Pro
 wheel CAD is exposed through continuous ROS wheel joints and the verified
-LeRobot runtime wheel ordering. The ROS `base_link` axis convention still needs
-a system-level audit.
+LeRobot runtime wheel ordering. `base_link` follows REP-103 (+x forward, +y
+left, +z up); the preserved CAD subtree is attached through the fixed
+`base_cad_link` adapter.
 
 Build with:
 
