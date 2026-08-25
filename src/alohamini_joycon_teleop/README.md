@@ -56,6 +56,12 @@ arm. The arm-base axes are `+X = robot left`, `-Y = robot forward`, `+Z = up`.
   it never also emits the plain left/right command. Fixed Cartesian nudges may
   be blended with faucet control while a rail clutch is held. A newly engaged
   arm gesture re-latches the measured TCP pose.
+- Fixed face-button XYZ gestures also accept simultaneous relative Joy-Con
+  orientation. In SL/SR faucet mode L/stick-click already provide +/-Z, so L
+  does not remap a simultaneously held face button; the axes compose instead.
+- Differential DLS applies `orientation_axis_signs` to the relative quaternion;
+  the Joy-Con roll and yaw axes are mirrored so physical rotations command the
+  gripper in the same visual direction instead of the opposite direction.
 - ZL/ZR toggles the corresponding gripper.
 - Capture/Home re-latches measured FK and the Joy-Con attitude.
 - Without an arm rail clutch, sticks control the mobile base. Right shoulder +

@@ -15,9 +15,9 @@ alohamini_joycon_teleop:
     orientation_scale: 1.0
     orientation_deadband_rad: 0.02
     # Per-axis signs (roll, pitch, yaw) of the Joy-Con attitude increments
-    # applied to the TCP: the native library's roll is mirrored relative to
-    # the gripper, so roll is negated.
-    orientation_axis_signs: [-1.0, 1.0, 1.0]
+    # applied to the TCP: the native library's roll and yaw are mirrored
+    # relative to the gripper/ROS visual convention, so both are negated.
+    orientation_axis_signs: [-1.0, 1.0, -1.0]
     max_orientation_delta_rad: 1.2
     orientation_speed_rad_s: 0.8
     imu_latch_reference: current

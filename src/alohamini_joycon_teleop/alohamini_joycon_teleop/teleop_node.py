@@ -32,12 +32,14 @@ from .kinematics import (
 )
 from .mapping import (
     LEVEL_TCP_QUATERNION,
+    base_relative_quaternion,
     base_command,
     euler_delta_quaternion,
     faucet_translation_velocity,
     integrate_base_preview,
     next_lift_stick_latch,
     normalize_stick,
+    quaternion_axis_signs,
     quaternion_multiply,
     relative_quaternion,
     step_orientation_toward,
@@ -129,7 +131,7 @@ class JoyConTeleop(Node):
             # Per-axis signs of the Joy-Con attitude increments applied to the
             # TCP (roll, pitch, yaw). The native library reports roll in the
             # opposite direction to the gripper, so roll is negated.
-            "orientation_axis_signs": [-1.0, 1.0, 1.0],
+            "orientation_axis_signs": [-1.0, 1.0, -1.0],
             "max_orientation_delta_rad": 1.2,
             "orientation_speed_rad_s": 0.8,
             "imu_latch_reference": "current",
@@ -818,8 +820,15 @@ class JoyConTeleop(Node):
             return
         buttons = sample["buttons"]
         clutch = bool(buttons.get("sl") or buttons.get("sr"))
+        fixed_buttons = buttons
+        if clutch and buttons.get("shoulder"):
+            # In full faucet mode L already provides +Z. Keep the face buttons
+            # on their ordinary XY mapping so L+face can compose axes instead
+            # of adding a duplicate shoulder-modified Z command.
+            fixed_buttons = dict(buttons)
+            fixed_buttons["shoulder"] = False
         fixed_delta = tcp_button_delta(
-            buttons,
+            fixed_buttons,
             float(self.get_parameter("tcp_speed_m_s").value),
             dt,
         )
@@ -860,29 +869,46 @@ class JoyConTeleop(Node):
         for index, value in enumerate(fixed_delta):
             proposed["position"][index] += value
 
-        if clutch:
+        # Both fixed Cartesian buttons and the full faucet gesture may change
+        # TCP translation and orientation together. Each newly engaged gesture
+        # treats the current hand attitude as its neutral orientation.
+        if clutch or fixed_active:
             if arm.hand_anchor_orientation is None:
                 arm.hand_anchor_orientation = hand_orientation
                 arm.tcp_anchor_orientation = list(arm.target_pose["orientation"])
-            relative = relative_quaternion(
+            local_relative = relative_quaternion(
                 hand_orientation, arm.hand_anchor_orientation
             )
-            horizontal = normalize_stick(sample["stick"][0], self.deadzone)
-            vertical = normalize_stick(sample["stick"][1], self.deadzone)
-            vertical_input = float(bool(buttons.get("shoulder"))) - float(
-                bool(buttons.get("stick"))
+            orientation_signs = [
+                float(value)
+                for value in self.get_parameter("orientation_axis_signs").value
+            ]
+            local_relative = quaternion_axis_signs(
+                local_relative, orientation_signs
             )
-            velocity = faucet_translation_velocity(
-                horizontal,
-                vertical,
-                relative,
-                float(self.get_parameter("tcp_speed_m_s").value),
-                vertical_input,
-            )
-            for index, value in enumerate(velocity):
-                proposed["position"][index] += value * dt
+            if clutch:
+                horizontal = normalize_stick(sample["stick"][0], self.deadzone)
+                vertical = normalize_stick(sample["stick"][1], self.deadzone)
+                vertical_input = float(bool(buttons.get("shoulder"))) - float(
+                    bool(buttons.get("stick"))
+                )
+                base_relative = base_relative_quaternion(
+                    hand_orientation, arm.hand_anchor_orientation
+                )
+                base_relative = quaternion_axis_signs(
+                    base_relative, orientation_signs
+                )
+                velocity = faucet_translation_velocity(
+                    horizontal,
+                    vertical,
+                    base_relative,
+                    float(self.get_parameter("tcp_speed_m_s").value),
+                    vertical_input,
+                )
+                for index, value in enumerate(velocity):
+                    proposed["position"][index] += value * dt
             commanded_orientation = quaternion_multiply(
-                arm.tcp_anchor_orientation, relative
+                arm.tcp_anchor_orientation, local_relative
             )
             proposed["orientation"] = step_orientation_toward(
                 proposed["orientation"],

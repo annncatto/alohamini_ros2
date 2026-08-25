@@ -57,9 +57,28 @@ def quaternion_rotate_vector(
     ]
 
 
+def quaternion_axis_signs(
+    quaternion: list[float], signs: list[float]
+) -> list[float]:
+    """Apply configured roll/pitch/yaw axis signs to a relative quaternion."""
+    if len(signs) != 3 or any(abs(float(sign)) != 1.0 for sign in signs):
+        raise ValueError("quaternion axis signs must contain three +/-1 values")
+    x, y, z, w = quaternion
+    result = [x * signs[0], y * signs[1], z * signs[2], w]
+    norm = math.sqrt(sum(value * value for value in result))
+    if norm <= 1.0e-12:
+        raise ValueError("zero quaternion")
+    return [value / norm for value in result]
+
+
 def relative_quaternion(current: list[float], anchor: list[float]) -> list[float]:
-    """Return the controller rotation since the clutch latch."""
+    """Return the local/controller-frame rotation since the gesture latch."""
     return quaternion_multiply(quaternion_conjugate(anchor), current)
+
+
+def base_relative_quaternion(current: list[float], anchor: list[float]) -> list[float]:
+    """Return the active rotation in the fixed arm-base coordinate axes."""
+    return quaternion_multiply(current, quaternion_conjugate(anchor))
 
 
 def faucet_translation_velocity(

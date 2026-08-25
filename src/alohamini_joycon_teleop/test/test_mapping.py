@@ -4,12 +4,15 @@ import pytest
 import yaml
 from alohamini_joycon_teleop.mapping import (
     LEVEL_TCP_QUATERNION,
+    base_relative_quaternion,
     base_command,
     faucet_translation_velocity,
     integrate_base_preview,
     lift_stick_requested,
     next_lift_stick_latch,
     normalize_stick,
+    quaternion_axis_signs,
+    quaternion_multiply,
     relative_quaternion,
     step_orientation_toward,
     tcp_button_delta,
@@ -121,6 +124,13 @@ def test_faucet_translation_is_xyz_not_tcp_frame_translation():
     assert faucet_translation_velocity(0.0, 1.0, identity, 0.1) == pytest.approx(
         [0.0, -0.1, 0.0]
     )
+    # {side}_Base +X is robot-left, so stick-right is -X and stick-left is +X.
+    assert faucet_translation_velocity(1.0, 0.0, identity, 0.1) == pytest.approx(
+        [-0.1, 0.0, 0.0]
+    )
+    assert faucet_translation_velocity(-1.0, 0.0, identity, 0.1) == pytest.approx(
+        [0.1, 0.0, 0.0]
+    )
     # Relative +90 degree yaw turns the nozzle's forward direction toward +X.
     yaw_90 = [0.0, 0.0, math.sin(math.pi / 4), math.cos(math.pi / 4)]
     assert faucet_translation_velocity(0.0, 1.0, yaw_90, 0.1) == pytest.approx(
@@ -129,6 +139,31 @@ def test_faucet_translation_is_xyz_not_tcp_frame_translation():
 def test_relative_quaternion_removes_arbitrary_latch_attitude():
     anchor = [math.sin(0.3), 0.0, 0.0, math.cos(0.3)]
     assert relative_quaternion(anchor, anchor) == pytest.approx([0.0, 0.0, 0.0, 1.0])
+
+
+def test_base_relative_quaternion_uses_fixed_axis_composition_order():
+    roll = [math.sin(0.25), 0.0, 0.0, math.cos(0.25)]
+    yaw = [0.0, 0.0, math.sin(0.35), math.cos(0.35)]
+    current = quaternion_multiply(yaw, roll)
+    assert base_relative_quaternion(current, roll) == pytest.approx(yaw)
+
+
+def test_relative_quaternion_roll_sign_matches_gripper_command():
+    roll = [math.sin(0.25), 0.0, 0.0, math.cos(0.25)]
+    corrected = quaternion_axis_signs(roll, [-1.0, 1.0, 1.0])
+    assert corrected == pytest.approx(
+        [-math.sin(0.25), 0.0, 0.0, math.cos(0.25)]
+    )
+    assert quaternion_axis_signs(
+        [0.0, math.sin(0.2), 0.0, math.cos(0.2)], [-1.0, 1.0, 1.0]
+    ) == pytest.approx([0.0, math.sin(0.2), 0.0, math.cos(0.2)])
+
+
+def test_relative_quaternion_yaw_sign_matches_gripper_command():
+    yaw = [0.0, 0.0, math.sin(0.3), math.cos(0.3)]
+    assert quaternion_axis_signs(yaw, [-1.0, 1.0, -1.0]) == pytest.approx(
+        [0.0, 0.0, -math.sin(0.3), math.cos(0.3)]
+    )
 
 
 def test_orientation_step_is_rate_limited():
