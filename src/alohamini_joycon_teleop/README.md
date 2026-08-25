@@ -24,10 +24,11 @@ right arm. The left Joy-Con uses its d-pad where the right one uses X/B/Y/A.
 - R + right stick left/right: base turn (right = clockwise).
 - L + left stick up/down: lift axis up / down. While L is held the left stick
   contributes no base translation, so lift and drive never mix accidentally.
-  After release the node freezes the last commanded height and keeps holding
-  it: the Host stops driving the lift when the trajectory stream ends, so the
-  teleop re-commands whenever the measured lift sinks beyond
-  `lift_hold_tolerance_m` (`lift_hold: true`).
+  Hardware mode publishes a standard `JointJog`. The bridge keeps the Host
+  position loop 50 mm ahead of the latest measured height, matching the
+  verified LeRobot U/J behavior. Centering, releasing, disconnecting, or a jog
+  timeout locks the latest fresh measured height; stale feedback never creates
+  a new lift target.
 - X (d-pad up) / B (d-pad down): that arm TCP forward / backward.
 - Y (d-pad left) / A (d-pad right): that arm TCP left / right.
   These directions are evaluated in that arm's preserved `{side}_Base` CAD
@@ -36,6 +37,23 @@ right arm. The left Joy-Con uses its d-pad where the right one uses X/B/Y/A.
   arm TCP up / down in the world frame (+z / -z; both arm base frames are
   root-aligned so this is world vertical).
 - ZL / ZR: toggle the corresponding gripper.
+
+Each arm keeps at most one `FollowJointTrajectory` goal in flight. IK continues
+to update the desired TCP while that goal runs, but only the newest solution is
+queued for the next goal; continuous input therefore cannot repeatedly preempt
+and restart the current trajectory from measured state.
+
+TCP translation is integrated over the actual interval between IK requests,
+not the faster Joy-Con timer interval, so `tcp_speed_m_s` remains the real
+Cartesian speed when `control_rate_hz` and `ik_rate_hz` differ. FK targets,
+markers, and IK requests all stay in `{side}_Base`; lift motion therefore moves
+the complete arm and TCP naturally instead of making the joints counter-move
+to preserve an obsolete world-frame target. Lift input still cancels queued
+arm targets so the two resources cannot command concurrently.
+
+Hardware launch remains read-only by default (`auto_enable_commands: false`).
+Enabling the bridge does not generate a Home or hold target; each resource stays
+idle until it receives fresh operator input.
 - SL or SR + rotate the controller: adjust that arm TCP orientation. The
   control is incremental (the controller's absolute attitude is irrelevant),
   so releasing and re-pressing SL/SR continues from the current gripper

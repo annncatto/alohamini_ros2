@@ -4,7 +4,7 @@ alohamini_joycon_teleop:
     input_endpoint: tcp://127.0.0.1:5567
     input_timeout_sec: 0.25
     measured_state_timeout_sec: 0.25
-    control_rate_hz: 20.0
+    control_rate_hz: 30.0
     ik_rate_hz: 12.0
     ik_timeout_sec: 0.3
     deadzone: 0.25
@@ -21,17 +21,13 @@ alohamini_joycon_teleop:
     preview_home: installed
     max_joint_step_rad: 0.10
     max_ik_jump_rad: 1.6
-    arm_goal_max_velocity_rad_s: 0.4
+    arm_goal_max_velocity_rad_s: 0.6
     avoid_collisions: true
-    arm_trajectory_duration_sec: 0.15
+    arm_trajectory_duration_sec: 0.10
     finish_last_target: true
     base_linear_speed_m_s: 0.10
     base_angular_speed_rad_s: 0.5
     lift_speed_m_s: 0.02
-    lift_command_period_sec: 0.15
-    lift_hold: true
-    lift_hold_tolerance_m: 0.005
-    lift_track_margin_rad: 0.01
-    auto_enable_commands: true
+    auto_enable_commands: false
     preview_joint_states_topic: /alohamini_plan_only/joint_states
     measured_joint_states_topic: /joint_states

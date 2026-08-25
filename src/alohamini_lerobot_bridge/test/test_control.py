@@ -92,6 +92,72 @@ def test_inactive_resources_emit_no_default_joint_targets():
     assert "lift_axis.height_mm" not in action
 
 
+def test_lift_jog_tracks_fresh_measurement_with_verified_lookahead():
+    composer = _composer()
+    composer.enable()
+    measured = _measured()
+
+    composer.accept_lift_jog(0.02, measured, True, now=1.0)
+    action = composer.compose(measured, _metadata(), True, now=1.1)
+
+    assert action["lift_axis.height_mm"] == pytest.approx(350.0)
+    assert {key: action[key] for key in ("x.vel", "y.vel", "theta.vel")} == {
+        "x.vel": 0.0,
+        "y.vel": 0.0,
+        "theta.vel": 0.0,
+    }
+
+    measured["vertical_move"] = 0.01
+    action = composer.compose(measured, _metadata(), True, now=1.2)
+    assert action["lift_axis.height_mm"] == pytest.approx(360.0)
+
+
+def test_zero_lift_jog_locks_latest_fresh_measurement():
+    composer = _composer()
+    composer.enable()
+    measured = _measured()
+    composer.accept_lift_jog(-0.02, measured, True, now=1.0)
+    measured["vertical_move"] = -0.04
+
+    composer.accept_lift_jog(0.0, measured, True, now=1.1)
+    immediate_stop = composer.compose(measured, _metadata(), True, now=1.11)
+    assert immediate_stop["lift_axis.vel"] == 0.0
+    assert "lift_axis.height_mm" not in immediate_stop
+
+    # The mechanism can coast after the cached measurement used by the stop
+    # callback. Hold a newer observation rather than reversing to -0.04.
+    measured["vertical_move"] = -0.035
+    action = composer.compose(measured, _metadata(), True, now=1.21)
+
+    assert not composer.lift_jog_active
+    assert not composer.lift_jog_stop_pending
+    assert action["lift_axis.vel"] == 0.0
+    assert action["lift_axis.height_mm"] == pytest.approx(265.0)
+
+
+def test_lift_jog_timeout_and_stale_state_never_reuse_old_lookahead():
+    composer = _composer()
+    composer.enable()
+    measured = _measured()
+    composer.accept_lift_jog(0.02, measured, True, now=1.0)
+    assert composer.compose(measured, _metadata(), True, now=1.1)
+
+    timed_out = composer.compose(measured, _metadata(), True, now=1.51)
+    assert not composer.lift_jog_active
+    assert composer.lift_jog_stop_pending
+    assert timed_out["lift_axis.vel"] == 0.0
+    assert "lift_axis.height_mm" not in timed_out
+
+    settled = composer.compose(measured, _metadata(), True, now=1.62)
+    assert settled["lift_axis.vel"] == 0.0
+    assert settled["lift_axis.height_mm"] == pytest.approx(300.0)
+
+    composer.accept_lift_jog(0.02, measured, True, now=2.0)
+    stale = composer.compose(measured, _metadata(), False, now=2.1)
+    assert not composer.lift_jog_active
+    assert stale == {"x.vel": 0.0, "y.vel": 0.0, "theta.vel": 0.0}
+
+
 def test_partial_arm_goal_latches_unspecified_joints_from_fresh_measurement():
     composer = _composer()
     composer.enable()

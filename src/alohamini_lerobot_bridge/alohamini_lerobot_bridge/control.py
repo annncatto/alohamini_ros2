@@ -271,6 +271,8 @@ class CommandComposer:
         goal_time_tolerance: float = 1.0,
         gripper_tracking_error: float = 0.5,
         gripper_goal_tolerance: float = 0.05,
+        lift_jog_lookahead: float = 0.05,
+        lift_jog_stop_settle: float = 0.1,
     ) -> None:
         self.mapper = mapper
         self.command_timeout = float(command_timeout)
@@ -327,6 +329,23 @@ class CommandComposer:
             ),
         }
         self.enabled = False
+        self.lift_jog_lookahead = float(lift_jog_lookahead)
+        if (
+            not math.isfinite(self.lift_jog_lookahead)
+            or self.lift_jog_lookahead <= 0.0
+        ):
+            raise ValueError("lift_jog_lookahead must be finite and positive")
+        self.lift_jog_active = False
+        self.lift_jog_velocity = 0.0
+        self.lift_jog_time = 0.0
+        self.lift_jog_stop_settle = float(lift_jog_stop_settle)
+        if (
+            not math.isfinite(self.lift_jog_stop_settle)
+            or self.lift_jog_stop_settle < 0.0
+        ):
+            raise ValueError("lift_jog_stop_settle must be finite and non-negative")
+        self.lift_jog_stop_pending = False
+        self.lift_jog_stop_time = 0.0
         self.stale_stop_pending = False
         self.ever_commanded = False
         self.lock = RLock()
@@ -337,6 +356,9 @@ class CommandComposer:
             self.base.enable()
             self.stale_stop_pending = False
             self.ever_commanded = False
+            self.lift_jog_active = False
+            self.lift_jog_velocity = 0.0
+            self.lift_jog_stop_pending = False
             for resource in self.resources.values():
                 resource.active_goal_id = None
                 resource.samples = ()
@@ -348,6 +370,9 @@ class CommandComposer:
             should_stop = self.enabled and self.ever_commanded
             self.enabled = False
             self.base.disable()
+            self.lift_jog_active = False
+            self.lift_jog_velocity = 0.0
+            self.lift_jog_stop_pending = False
             now = time.monotonic()
             for resource in self.resources.values():
                 resource._finish(
@@ -373,6 +398,8 @@ class CommandComposer:
             if not fresh:
                 return action
             try:
+                if self.lift_jog_active or self.lift_jog_stop_pending:
+                    action["lift_axis.vel"] = 0.0
                 for name, resource in self.resources.items():
                     if not resource.active:
                         continue
@@ -392,6 +419,49 @@ class CommandComposer:
         with self.lock:
             return self.base.accept(velocity, now)
 
+    def accept_lift_jog(
+        self,
+        velocity: float,
+        measured: dict[str, float],
+        fresh: bool,
+        now: float | None = None,
+    ) -> None:
+        """Accept a standard JointJog lift velocity without bypassing safety."""
+        with self.lock:
+            if not self.enabled:
+                raise ValueError("ROS command channel is disabled")
+            if not fresh or "vertical_move" not in measured:
+                raise ValueError("fresh measured lift state is required")
+            velocity = float(velocity)
+            if not math.isfinite(velocity):
+                raise ValueError("lift jog velocity must be finite")
+            now = time.monotonic() if now is None else now
+            lift = self.resources["lift"]
+            if abs(velocity) <= 1.0e-9:
+                if self.lift_jog_active:
+                    self.lift_jog_active = False
+                    self.lift_jog_velocity = 0.0
+                    # Stop velocity first. The cached observation can trail a
+                    # moving lift; immediately holding it would reverse the
+                    # mechanism toward an older height. Latch position only
+                    # after fresh observations have caught up.
+                    lift.hold_positions = None
+                    self.lift_jog_stop_pending = True
+                    self.lift_jog_stop_time = now
+                return
+            if lift.active_goal_id is not None:
+                lift._finish(
+                    TerminalState.PREEMPTED,
+                    "preempted by lift jog",
+                    measured,
+                    now,
+                )
+            lift.hold_positions = None
+            self.lift_jog_active = True
+            self.lift_jog_velocity = velocity
+            self.lift_jog_time = now
+            self.lift_jog_stop_pending = False
+
     def start_trajectory(
         self,
         resource: str,
@@ -406,6 +476,10 @@ class CommandComposer:
                 raise ValueError("ROS command channel is disabled")
             if not fresh:
                 raise ValueError("fresh Host observation is required")
+            if resource == "lift":
+                self.lift_jog_active = False
+                self.lift_jog_velocity = 0.0
+                self.lift_jog_stop_pending = False
             return self.resources[resource].activate(
                 joint_names,
                 samples,
@@ -447,6 +521,9 @@ class CommandComposer:
             ):
                 permitted = False
             if not permitted:
+                self.lift_jog_active = False
+                self.lift_jog_velocity = 0.0
+                self.lift_jog_stop_pending = False
                 for resource in self.resources.values():
                     resource.update(measured, False, now)
                 self.base.enable()  # invalidate every pre-stale base command
@@ -457,6 +534,22 @@ class CommandComposer:
                 return None
             self.stale_stop_pending = False
             action: dict[str, float] = {}
+            if self.lift_jog_active and now - self.lift_jog_time > self.command_timeout:
+                self.lift_jog_active = False
+                self.lift_jog_velocity = 0.0
+                self.resources["lift"].hold_positions = None
+                self.lift_jog_stop_pending = True
+                self.lift_jog_stop_time = now
+            if self.lift_jog_stop_pending:
+                action["lift_axis.vel"] = 0.0
+                if now - self.lift_jog_stop_time >= self.lift_jog_stop_settle:
+                    self.lift_jog_stop_pending = False
+                    self.resources["lift"]._finish(
+                        TerminalState.CANCELED,
+                        "lift jog stopped at fresh settled measurement",
+                        measured,
+                        now,
+                    )
             base = self.base.resolve(True, self.command_timeout, now)
             if base is not None:
                 action.update(
@@ -468,6 +561,16 @@ class CommandComposer:
                 )
             try:
                 for name, resource in self.resources.items():
+                    if name == "lift" and self.lift_jog_active:
+                        target = measured["vertical_move"] + math.copysign(
+                            self.lift_jog_lookahead,
+                            self.lift_jog_velocity,
+                        )
+                        target = max(-0.3, min(0.3, target))
+                        action["lift_axis.height_mm"] = (
+                            self.mapper.lift_urdf_to_height(target)
+                        )
+                        continue
                     targets = resource.update(measured, True, now)
                     if targets is None:
                         continue

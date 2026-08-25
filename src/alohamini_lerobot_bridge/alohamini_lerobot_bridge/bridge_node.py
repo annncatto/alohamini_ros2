@@ -10,6 +10,7 @@ import rclpy
 import yaml
 from ament_index_python.packages import get_package_share_directory
 from control_msgs.action import FollowJointTrajectory, GripperCommand
+from control_msgs.msg import JointJog
 from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus, KeyValue
 from geometry_msgs.msg import Twist, TwistStamped
 from rclpy.action import ActionServer, CancelResponse, GoalResponse
@@ -55,18 +56,22 @@ class AlohaMiniLeRobotBridge(Node):
             "arm_goal_tolerance_rad": 0.03,
             "gripper_path_tolerance_rad": 0.5,
             "gripper_goal_tolerance_rad": 0.05,
-            "gripper_command_duration_sec": 3.0,
+            "gripper_command_duration_sec": 1.0,
             "lift_goal_tolerance_m": 0.003,
             "goal_time_tolerance_sec": 1.0,
             "expected_robot_model": "alohamini2pro",
             "require_model_match": True,
             "cmd_vel_topic": "/cmd_vel",
+            "lift_jog_topic": "/lift_controller/joint_jog",
             "joint_states_topic": "/joint_states",
             "base_velocity_topic": "/alohamini/base_velocity",
             "base_frame": "base_link",
             "max_linear_speed": 0.25,
             "max_lateral_speed": 0.25,
             "max_angular_speed": 1.0,
+            "max_lift_jog_speed_m_s": 0.05,
+            "lift_jog_lookahead_m": 0.05,
+            "lift_jog_stop_settle_sec": 0.10,
             "linear_x_scale": 1.0,
             "linear_y_scale": 1.0,
             "angular_z_scale": 1.0,
@@ -123,6 +128,8 @@ class AlohaMiniLeRobotBridge(Node):
             float(self.get_parameter("goal_time_tolerance_sec").value),
             float(self.get_parameter("gripper_path_tolerance_rad").value),
             float(self.get_parameter("gripper_goal_tolerance_rad").value),
+            float(self.get_parameter("lift_jog_lookahead_m").value),
+            float(self.get_parameter("lift_jog_stop_settle_sec").value),
         )
         self.gripper_command_duration = float(
             self.get_parameter("gripper_command_duration_sec").value
@@ -174,6 +181,12 @@ class AlohaMiniLeRobotBridge(Node):
         )
         self.create_subscription(
             Twist, str(self.get_parameter("cmd_vel_topic").value), self.on_cmd_vel, 10
+        )
+        self.create_subscription(
+            JointJog,
+            str(self.get_parameter("lift_jog_topic").value),
+            self.on_lift_jog,
+            10,
         )
         self.create_service(SetBool, "~/command_enable", self.on_command_enable)
         self.action_callback_group = ReentrantCallbackGroup()
@@ -264,6 +277,36 @@ class AlohaMiniLeRobotBridge(Node):
                 yaw=yaw * float(self.get_parameter("angular_z_scale").value),
             )
         )
+
+    def on_lift_jog(self, message: JointJog) -> None:
+        if not self.command_gate.enabled:
+            return
+        if message.joint_names != ["vertical_move"] or len(message.velocities) != 1:
+            self.get_logger().warning(
+                "Rejected lift JointJog: require vertical_move and one velocity"
+            )
+            return
+        velocity = float(message.velocities[0])
+        if not math.isfinite(velocity):
+            self.get_logger().warning("Rejected non-finite lift JointJog")
+            return
+        velocity = clamp(
+            velocity,
+            float(self.get_parameter("max_lift_jog_speed_m_s").value),
+        )
+        if abs(velocity) > 1.0e-9 and not self.lift_ready_for_commands():
+            self.get_logger().warning(
+                "Rejected lift JointJog: Host lift is not homed with torque enabled"
+            )
+            return
+        try:
+            self.composer.accept_lift_jog(
+                velocity,
+                self.latest_positions,
+                self.observation_fresh(),
+            )
+        except ValueError as exc:
+            self.get_logger().warning(f"Rejected lift JointJog: {exc}")
 
     def on_command_enable(self, request: SetBool.Request, response: SetBool.Response):
         if request.data:

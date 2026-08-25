@@ -51,6 +51,7 @@ is armed independently by a post-enable command. The standard interfaces are:
 - left arm: `/left_arm_controller/follow_joint_trajectory`;
 - right arm: `/right_arm_controller/follow_joint_trajectory`;
 - lift: `/lift_controller/follow_joint_trajectory`;
+- lift jog: `/lift_controller/joint_jog` (`control_msgs/msg/JointJog`);
 - left gripper: `/left_gripper_controller/gripper_cmd`;
 - right gripper: `/right_gripper_controller/gripper_cmd`.
 
@@ -77,6 +78,15 @@ Path and endpoint checks are separate. The default lift path tolerance is
 most `1.0 s` before returning `GOAL_TOLERANCE_VIOLATED`. Lift goals additionally
 require the Host to report that resource as homed with torque enabled; other
 resources remain independently available.
+
+Lift jog uses the same guarded command composer as trajectories. While a fresh
+`vertical_move` jog is refreshed, the bridge commands the latest measured
+height plus or minus `lift_jog_lookahead_m` (50 mm by default), reproducing the
+smooth verified U/J control without modifying the Host. A zero jog or timeout
+first sends direct zero velocity for `lift_jog_stop_settle_sec`, then locks a
+newer fresh measurement. This prevents reversal toward a height cached while
+the lift was still moving. Stale observation clears the jog and emits no new
+lift target.
 
 The Host paired with this control layer must accept either all three base
 velocity fields or none. This permits arm-only and lift-only frames without an
