@@ -26,6 +26,8 @@ setup(
     entry_points={
         "console_scripts": [
             "teleop_node = alohamini_joycon_teleop.teleop_node:main",
+            "mujoco_kinematics_viewer = alohamini_joycon_teleop.mujoco_viewer:main",
+            "joycon_input_log = alohamini_joycon_teleop.input_log:main",
         ]
     },
 )

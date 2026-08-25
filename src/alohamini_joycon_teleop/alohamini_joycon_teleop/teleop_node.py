@@ -6,6 +6,7 @@ import time
 from dataclasses import dataclass, field
 from functools import partial
 
+import numpy as np
 import rclpy
 import yaml
 import zmq
@@ -24,17 +25,24 @@ from sensor_msgs.msg import JointState
 from trajectory_msgs.msg import JointTrajectoryPoint
 from visualization_msgs.msg import Marker, MarkerArray
 
+from .kinematics import (
+    AlohaMiniArmKinematics,
+    matrix_to_quaternion,
+    quaternion_to_matrix,
+)
 from .mapping import (
     LEVEL_TCP_QUATERNION,
     base_command,
     euler_delta_quaternion,
+    faucet_translation_velocity,
     integrate_base_preview,
+    next_lift_stick_latch,
     normalize_stick,
     quaternion_multiply,
+    relative_quaternion,
     step_orientation_toward,
     tcp_button_delta,
 )
-
 
 ARM_SUFFIXES = (
     "shoulder_pan",
@@ -90,7 +98,10 @@ class ArmControl:
     fault_latched: bool = False
     relatch_was_pressed: bool = False
     trigger_was_pressed: bool = False
+    last_gripper_toggle: float = -1.0e9
     rejection_streak: int = 0
+    hand_anchor_orientation: list[float] | None = None
+    tcp_anchor_orientation: list[float] | None = None
 
 
 @dataclass
@@ -108,7 +119,8 @@ class JoyConTeleop(Node):
             "input_timeout_sec": 0.25,
             "measured_state_timeout_sec": 0.25,
             "control_rate_hz": 30.0,
-            "ik_rate_hz": 12.0,
+            "ik_rate_hz": 20.0,
+            "arm_control_mode": "differential",
             "ik_timeout_sec": 0.3,
             "deadzone": 0.25,
             "tcp_speed_m_s": 0.03,
@@ -124,13 +136,24 @@ class JoyConTeleop(Node):
             "preview_home": "installed",
             "max_joint_step_rad": 0.10,
             "max_ik_jump_rad": 0.5,
-            "arm_goal_max_velocity_rad_s": 0.6,
+            "arm_goal_max_velocity_rad_s": 1.5,
+            "dls_position_gain": 8.0,
+            "dls_orientation_gain": 5.0,
+            "dls_orientation_weight": 0.35,
+            "dls_damping": 0.04,
+            "dls_max_joint_velocity_rad_s": 1.5,
+            "dls_max_joint_step_rad": 0.08,
+            "dls_command_horizon_sec": 0.20,
+            "dls_max_target_error_m": 0.04,
+            "dls_joint_limit_margin_rad": 0.03,
             "avoid_collisions": True,
-            "arm_trajectory_duration_sec": 0.10,
+            "arm_trajectory_duration_sec": 0.08,
             "finish_last_target": True,
             "base_linear_speed_m_s": 0.10,
             "base_angular_speed_rad_s": 0.5,
             "lift_speed_m_s": 0.02,
+            "button_release_grace_sec": 0.12,
+            "gripper_button_debounce_sec": 0.30,
             "auto_enable_commands": False,
             "preview_joint_states_topic": "/alohamini_plan_only/joint_states",
             "measured_joint_states_topic": "/joint_states",
@@ -143,14 +166,15 @@ class JoyConTeleop(Node):
             self.get_parameter("measured_state_timeout_sec").value
         )
         self.deadzone = float(self.get_parameter("deadzone").value)
+        self.arm_control_mode = str(self.get_parameter("arm_control_mode").value)
+        if self.arm_control_mode not in ("differential", "moveit"):
+            raise ValueError("arm_control_mode must be differential or moveit")
         self.ik_period = 1.0 / float(self.get_parameter("ik_rate_hz").value)
         self.ik_timeout = float(self.get_parameter("ik_timeout_sec").value)
         self.orientation_deadband = float(
             self.get_parameter("orientation_deadband_rad").value
         )
-        self.imu_latch_reference = str(
-            self.get_parameter("imu_latch_reference").value
-        )
+        self.imu_latch_reference = str(self.get_parameter("imu_latch_reference").value)
         if self.imu_latch_reference not in ("level", "current"):
             raise ValueError("imu_latch_reference must be 'level' or 'current'")
         self.callback_group = ReentrantCallbackGroup()
@@ -190,10 +214,15 @@ class JoyConTeleop(Node):
         )
         self.samples: dict[str, InputSample] = {}
         self.arms = {side: ArmControl() for side in ("left", "right")}
+        self.kinematics = {
+            side: AlohaMiniArmKinematics.from_description(side)
+            for side in ("left", "right")
+        }
         self.preview_base = [0.0, 0.0, 0.0]
         self.lift_target = self.positions["vertical_move"]
         self.measured_lift = self.lift_target
         self.lift_active = False
+        self.left_lift_stick_latched = False
         self.commands_enabled = False
         self.last_enable_attempt = 0.0
         self.base_was_active = False
@@ -204,6 +233,13 @@ class JoyConTeleop(Node):
         self.last_measured_state = None
         self.last_ik_warning: dict[str, float] = {}
         self.last_ik_ok: dict[str, float] = {}
+        self.input_sequence: dict[str, int] = {}
+        self.input_dropped = dict.fromkeys(("left", "right"), 0)
+        self.input_max_age_ms = dict.fromkeys(("left", "right"), 0.0)
+        self.button_last_true = {"left": {}, "right": {}}
+        self.last_timing_log = time.monotonic()
+        self.max_control_dt_ms = 0.0
+        self.max_dls_ms = dict.fromkeys(("left", "right"), 0.0)
 
         self.zmq_context = zmq.Context()
         self.input_socket = self.zmq_context.socket(zmq.SUB)
@@ -211,9 +247,7 @@ class JoyConTeleop(Node):
         self.input_socket.setsockopt_string(zmq.SUBSCRIBE, "")
         self.input_socket.connect(str(self.get_parameter("input_endpoint").value))
 
-        measured_topic = str(
-            self.get_parameter("measured_joint_states_topic").value
-        )
+        measured_topic = str(self.get_parameter("measured_joint_states_topic").value)
         self.create_subscription(JointState, measured_topic, self.on_joint_state, 20)
         self.preview_pub = self.create_publisher(
             JointState,
@@ -251,6 +285,12 @@ class JoyConTeleop(Node):
         self.lift_jog_pub = self.create_publisher(
             JointJog, "/lift_controller/joint_jog", 10
         )
+        self.arm_jog_pubs = {
+            side: self.create_publisher(
+                JointJog, f"/{side}_arm_controller/joint_jog", 10
+            )
+            for side in ("left", "right")
+        }
         from std_srvs.srv import SetBool
 
         self.enable_client = self.create_client(
@@ -300,16 +340,42 @@ class JoyConTeleop(Node):
                 self.get_logger().warning(f"Rejected malformed Joy-Con input: {exc}")
                 continue
             side = payload.get("side")
-            if payload.get("schema_version") != 1 or side not in self.arms:
+            if payload.get("schema_version") not in (1, 2) or side not in self.arms:
                 self.get_logger().warning("Rejected incompatible Joy-Con input")
                 continue
+            sequence = int(payload.get("sequence", 0))
+            previous = self.input_sequence.get(side)
+            if previous is not None and sequence > previous + 1:
+                self.input_dropped[side] += sequence - previous - 1
+            self.input_sequence[side] = sequence
+            source_ns = int(payload.get("monotonic_ns", 0))
+            if source_ns > 0:
+                age_ms = max(0.0, (time.monotonic_ns() - source_ns) / 1.0e6)
+                self.input_max_age_ms[side] = max(self.input_max_age_ms[side], age_ms)
             self.samples[side] = InputSample(now, payload)
 
     def sample(self, side: str, now: float) -> dict | None:
         item = self.samples.get(side)
         if item is None or now - item.received_at > self.input_timeout:
             return None
-        return item.payload
+        payload = dict(item.payload)
+        buttons = dict(payload["buttons"])
+        release_grace = float(
+            self.get_parameter("button_release_grace_sec").value
+        )
+        last_true = self.button_last_true[side]
+        # Joy-Con shoulder/d-pad reports can contain isolated false samples
+        # while a button is physically held. Accept presses immediately, but
+        # require a continuous release before handing the stick to another
+        # control mode. This prevents L+stick from alternating lift/base at
+        # the report rate and gives held d-pad TCP commands a continuous edge.
+        for name in ("shoulder", "sl", "sr", "up", "down", "left", "right"):
+            if bool(buttons.get(name)):
+                last_true[name] = now
+            elif now - last_true.get(name, -1.0e9) < release_grace:
+                buttons[name] = True
+        payload["buttons"] = buttons
+        return payload
 
     def fill_robot_state(self, state) -> None:
         state.joint_state.name = list(self.positions)
@@ -325,6 +391,23 @@ class JoyConTeleop(Node):
         arm = self.arms[side]
         seed = self.arm_seed(side)
         if arm.pending_fk or seed is None:
+            return
+        if self.arm_control_mode == "differential":
+            transform = self.kinematics[side].forward(seed)
+            arm.target_pose = {
+                "position": transform[:3, 3].tolist(),
+                "orientation": matrix_to_quaternion(transform[:3, :3]),
+            }
+            arm.orientation_reference = (
+                list(LEVEL_TCP_QUATERNION)
+                if self.imu_latch_reference == "level"
+                else None
+            )
+            arm.joy_anchor_rpy = None
+            arm.joy_anchor_orientation = None
+            arm.hand_anchor_orientation = None
+            arm.tcp_anchor_orientation = None
+            self.publish_markers(side, arm.target_pose)
             return
         request = GetPositionFK.Request()
         # Keep the complete Cartesian control loop in the arm's local frame.
@@ -417,9 +500,7 @@ class JoyConTeleop(Node):
         self.last_ik_warning[side] = now
         self.get_logger().warning(f"[{side}] {message}")
 
-    def retry_ik_mode(
-        self, side: str, proposed_pose: dict, reason: str
-    ) -> None:
+    def retry_ik_mode(self, side: str, proposed_pose: dict, reason: str) -> None:
         self.get_logger().info(
             f"[{side}] {reason}; retrying with LMA IK "
             f"pos={[round(v, 4) for v in proposed_pose['position']]} "
@@ -434,12 +515,9 @@ class JoyConTeleop(Node):
             mode="lma",
         )
 
-    def retry_position_only(
-        self, side: str, proposed_pose: dict, reason: str
-    ) -> None:
+    def retry_position_only(self, side: str, proposed_pose: dict, reason: str) -> None:
         self.get_logger().info(
-            f"[{side}] {reason}; retrying with position-only IK "
-            f"({side}_arm_pos group)"
+            f"[{side}] {reason}; retrying with position-only IK ({side}_arm_pos group)"
         )
         self.request_ik(
             side,
@@ -538,17 +616,15 @@ class JoyConTeleop(Node):
                 self.last_ik_ok[side] = now
                 recovered = " (recovered)" if had_rejections else ""
                 self.get_logger().info(
-                    f"[{side}] IK OK [{mode}] max step {worst_step:.3f} rad"
-                    f"{recovered}"
+                    f"[{side}] IK OK [{mode}] max step {worst_step:.3f} rad{recovered}"
                 )
             arm.target_pose = proposed_pose
             for name, value in zip(names, candidate, strict=True):
                 if not self.hardware_mode:
                     self.positions[name] = value
             self.publish_markers(side, proposed_pose)
-            if self.hardware_mode:
-                if not arm.cancel_after_accept:
-                    self.send_arm_goal(side, candidate)
+            if self.hardware_mode and not arm.cancel_after_accept:
+                self.send_arm_goal(side, candidate)
             if mode == "position":
                 # A position-only solution ignores the requested orientation;
                 # re-latch FK so the target pose and markers show the true
@@ -606,6 +682,11 @@ class JoyConTeleop(Node):
                 )
                 return
             arm.goal_handle = handle
+            # ``goal_busy`` covers only the asynchronous goal-request handshake.
+            # Once accepted, immediately stream the newest queued IK solution. The
+            # bridge preempts the previous short trajectory, producing a continuous
+            # target stream instead of waiting for every action result.
+            arm.goal_busy = False
             if arm.cancel_after_accept or (
                 not arm.active
                 and not bool(self.get_parameter("finish_last_target").value)
@@ -613,6 +694,14 @@ class JoyConTeleop(Node):
                 handle.cancel_goal_async()
             result = handle.get_result_async()
             result.add_done_callback(partial(self.on_arm_result, side, handle))
+            pending = arm.queued_positions
+            arm.queued_positions = None
+            if (
+                pending is not None
+                and not arm.cancel_after_accept
+                and (arm.active or bool(self.get_parameter("finish_last_target").value))
+            ):
+                self.send_arm_goal(side, pending)
         except Exception as exc:
             arm.goal_busy = False
             arm.goal_handle = None
@@ -623,16 +712,23 @@ class JoyConTeleop(Node):
         if arm.goal_handle is not handle:
             return
         arm.goal_handle = None
-        arm.goal_busy = False
         try:
             response = future.result()
             result = response.result
             succeeded = response.status == GoalStatus.STATUS_SUCCEEDED
             if not succeeded:
-                arm.queued_positions = None
-                arm.cancel_after_accept = False
                 if response.status == GoalStatus.STATUS_CANCELED:
                     return
+                # Streaming replaces the current short goal before it completes. A
+                # preempted result is expected, including the small race where the old
+                # result arrives while the next goal request is still being accepted.
+                if (
+                    arm.goal_busy
+                    or "preempted by a newer trajectory" in result.error_string
+                ):
+                    return
+                arm.queued_positions = None
+                arm.cancel_after_accept = False
                 self.get_logger().warning(
                     f"[{side}] arm goal ended with code "
                     f"{result.error_code}: {result.error_string or 'unknown'}"
@@ -644,9 +740,10 @@ class JoyConTeleop(Node):
             arm.queued_positions = None
             canceled = arm.cancel_after_accept
             arm.cancel_after_accept = False
-            if pending is not None and not canceled and (
-                arm.active
-                or bool(self.get_parameter("finish_last_target").value)
+            if (
+                pending is not None
+                and not canceled
+                and (arm.active or bool(self.get_parameter("finish_last_target").value))
             ):
                 self.send_arm_goal(side, pending)
             elif not arm.active:
@@ -662,6 +759,12 @@ class JoyConTeleop(Node):
         """Stop generating new arm targets; keep the last latch so Home
         re-latch and the TCP marker persist while the arm is idle."""
         arm = self.arms[side]
+        if (
+            getattr(self, "arm_control_mode", "moveit") == "differential"
+            and arm.active
+            and self.hardware_mode
+        ):
+            self.send_arm_jog(side, [0.0] * 6, 0.0)
         if cancel_goal:
             arm.queued_positions = None
             arm.cancel_after_accept = True
@@ -682,6 +785,215 @@ class JoyConTeleop(Node):
         arm.active = False
 
     def update_arm(
+        self,
+        side: str,
+        sample: dict | None,
+        now: float,
+        dt: float,
+    ) -> None:
+        if getattr(self, "arm_control_mode", "moveit") == "differential":
+            JoyConTeleop.update_arm_differential(self, side, sample, now, dt)
+        else:
+            JoyConTeleop.update_arm_moveit(self, side, sample, now, dt)
+
+    def send_arm_jog(self, side: str, displacements: list[float], dt: float) -> None:
+        message = JointJog()
+        message.header.stamp = self.get_clock().now().to_msg()
+        message.joint_names = arm_names(side)
+        message.displacements = [float(value) for value in displacements]
+        message.duration = max(0.0, float(dt))
+        self.arm_jog_pubs[side].publish(message)
+
+    def update_arm_differential(
+        self,
+        side: str,
+        sample: dict | None,
+        now: float,
+        dt: float,
+    ) -> None:
+        arm = self.arms[side]
+        if sample is None:
+            self.deactivate_arm(side, cancel_goal=True)
+            arm.hand_anchor_orientation = None
+            return
+        buttons = sample["buttons"]
+        clutch = bool(buttons.get("sl") or buttons.get("sr"))
+        fixed_delta = tcp_button_delta(
+            buttons,
+            float(self.get_parameter("tcp_speed_m_s").value),
+            dt,
+        )
+        fixed_active = any(abs(value) > 1.0e-9 for value in fixed_delta)
+        engaged = clutch or fixed_active
+        relatch = bool(buttons["relatch"])
+        relatch_pressed = relatch and not arm.relatch_was_pressed
+        arm.relatch_was_pressed = relatch
+        if relatch_pressed:
+            self.request_fk(side, sample)
+        JoyConTeleop.update_gripper_button(
+            self, side, bool(buttons["trigger"]), now
+        )
+        if not engaged:
+            self.deactivate_arm(side)
+            arm.fault_latched = False
+            arm.hand_anchor_orientation = None
+            arm.tcp_anchor_orientation = None
+            return
+        if not arm.active:
+            arm.active = True
+            # Always latch from measured FK on a new gesture. Otherwise an old
+            # look-ahead survives release and appears as an unrelated command.
+            self.request_fk(side, sample)
+        if arm.target_pose is None:
+            return
+
+        hand_orientation = sample.get("orientation_xyzw")
+        if hand_orientation is None:
+            hand_orientation = euler_delta_quaternion(
+                *[float(value) for value in sample["orientation_rpy"]]
+            )
+        hand_orientation = [float(value) for value in hand_orientation]
+        proposed = {
+            "position": [float(value) for value in arm.target_pose["position"]],
+            "orientation": list(arm.target_pose["orientation"]),
+        }
+        for index, value in enumerate(fixed_delta):
+            proposed["position"][index] += value
+
+        if clutch:
+            if arm.hand_anchor_orientation is None:
+                arm.hand_anchor_orientation = hand_orientation
+                arm.tcp_anchor_orientation = list(arm.target_pose["orientation"])
+            relative = relative_quaternion(
+                hand_orientation, arm.hand_anchor_orientation
+            )
+            horizontal = normalize_stick(sample["stick"][0], self.deadzone)
+            vertical = normalize_stick(sample["stick"][1], self.deadzone)
+            vertical_input = float(bool(buttons.get("shoulder"))) - float(
+                bool(buttons.get("stick"))
+            )
+            velocity = faucet_translation_velocity(
+                horizontal,
+                vertical,
+                relative,
+                float(self.get_parameter("tcp_speed_m_s").value),
+                vertical_input,
+            )
+            for index, value in enumerate(velocity):
+                proposed["position"][index] += value * dt
+            commanded_orientation = quaternion_multiply(
+                arm.tcp_anchor_orientation, relative
+            )
+            proposed["orientation"] = step_orientation_toward(
+                proposed["orientation"],
+                commanded_orientation,
+                float(self.get_parameter("orientation_speed_rad_s").value) * dt,
+            )
+        else:
+            arm.hand_anchor_orientation = None
+            arm.tcp_anchor_orientation = None
+
+        seed = self.arm_seed(side)
+        if seed is None:
+            return
+        current = self.kinematics[side].forward(seed)
+        target_lead = np.asarray(proposed["position"]) - current[:3, 3]
+        target_lead_m = float(np.linalg.norm(target_lead))
+        max_target_lead = float(self.get_parameter("dls_max_target_error_m").value)
+        target_limited = target_lead_m > max_target_lead
+        if target_limited:
+            # This is an outer Cartesian tracking gate, not an IK rejection.
+            # Keep the target at a bounded look-ahead while continuing to emit
+            # joint steps that let the measured arm catch up.
+            proposed["position"] = (
+                current[:3, 3] + target_lead * (max_target_lead / target_lead_m)
+            ).tolist()
+        target = np.eye(4)
+        target[:3, 3] = proposed["position"]
+        target[:3, :3] = quaternion_to_matrix(proposed["orientation"])
+        solve_started = time.perf_counter()
+        # The control timer stays at 30 Hz, but a slightly longer position
+        # look-ahead prevents every command from collapsing to a few servo
+        # ticks when Bridge anchors JointJog displacements at fresh feedback.
+        # Preview needs no such look-ahead because its joint state accepts the
+        # candidate exactly and has no static friction or bus latency.
+        command_dt = (
+            max(
+                dt,
+                float(self.get_parameter("dls_command_horizon_sec").value),
+            )
+            if self.hardware_mode
+            else dt
+        )
+        candidate, metrics = self.kinematics[side].step(
+            seed,
+            target,
+            command_dt,
+            position_gain=float(self.get_parameter("dls_position_gain").value),
+            orientation_gain=float(self.get_parameter("dls_orientation_gain").value),
+            orientation_weight=float(
+                self.get_parameter("dls_orientation_weight").value
+            ),
+            damping=float(self.get_parameter("dls_damping").value),
+            max_joint_velocity=float(
+                self.get_parameter("dls_max_joint_velocity_rad_s").value
+            ),
+            max_joint_step=float(self.get_parameter("dls_max_joint_step_rad").value),
+            joint_limit_margin=float(
+                self.get_parameter("dls_joint_limit_margin_rad").value
+            ),
+        )
+        self.max_dls_ms[side] = max(
+            self.max_dls_ms[side],
+            (time.perf_counter() - solve_started) * 1.0e3,
+        )
+        achieved = self.kinematics[side].forward(candidate)
+        residual = float(np.linalg.norm(target[:3, 3] - achieved[:3, 3]))
+        arm.target_pose = proposed
+        limit_hits = [arm_names(side)[index] for index in metrics["joint_limit_hits"]]
+        joint_delta = candidate - np.asarray(seed)
+        delta_text = ",".join(
+            f"{name.removeprefix(side + '_')}={value:+.4f}"
+            for name, value in zip(arm_names(side), joint_delta, strict=True)
+            if abs(value) >= 1.0e-5
+        ) or "zero"
+        if target_limited:
+            self.warn_ik(
+                side,
+                f"Cartesian target lead limited to {max_target_lead:.3f} m; "
+                f"residual={residual:.3f} m "
+                f"step={metrics['max_joint_step_rad']:.4f} rad "
+                f"sigma_min={metrics['minimum_singular_value']:.4f} "
+                f"limits={limit_hits or 'none'} dq=[{delta_text}]",
+            )
+        elif metrics["max_joint_step_rad"] < 1.0e-5 and residual > 0.005:
+            self.warn_ik(
+                side,
+                f"DLS stalled with residual={residual:.3f} m; "
+                f"sigma_min={metrics['minimum_singular_value']:.4f} "
+                f"limits={limit_hits or 'none'} dq=[{delta_text}]",
+            )
+        if self.hardware_mode:
+            self.send_arm_jog(
+                side,
+                (candidate - np.asarray(seed)).tolist(),
+                dt,
+            )
+        else:
+            for name, value in zip(arm_names(side), candidate, strict=True):
+                self.positions[name] = float(value)
+        self.publish_markers(side, arm.target_pose)
+        if now - self.last_ik_ok.get(side, 0.0) >= 1.0:
+            self.last_ik_ok[side] = now
+            self.get_logger().info(
+                f"[{side}] DLS 30 Hz: xyz_err={metrics['position_error_m']:.4f}m "
+                f"rot_err={metrics['orientation_error_rad']:.3f}rad "
+                f"sigma_min={metrics['minimum_singular_value']:.4f} "
+                f"step={metrics['max_joint_step_rad']:.4f}rad "
+                f"limits={limit_hits or 'none'} dq=[{delta_text}]"
+            )
+
+    def update_arm_moveit(
         self,
         side: str,
         sample: dict | None,
@@ -710,9 +1022,7 @@ class JoyConTeleop(Node):
         relatch_pressed = relatch and not arm.relatch_was_pressed
         arm.relatch_was_pressed = relatch
         if relatch_pressed and not arm.pending_fk:
-            self.get_logger().info(
-                f"{side} arm relatch requested (Home/Capture)"
-            )
+            self.get_logger().info(f"{side} arm relatch requested (Home/Capture)")
             self.request_fk(side, sample)
         if not engaged:
             self.deactivate_arm(side)
@@ -736,10 +1046,9 @@ class JoyConTeleop(Node):
         if not orientation_mode:
             arm.joy_anchor_rpy = None
 
-        trigger = bool(buttons["trigger"])
-        if trigger and not arm.trigger_was_pressed:
-            self.toggle_gripper(side)
-        arm.trigger_was_pressed = trigger
+        JoyConTeleop.update_gripper_button(
+            self, side, bool(buttons["trigger"]), now
+        )
         if not arm.active or arm.target_pose is None or arm.pending_fk:
             return
         if now - arm.last_ik_request < self.ik_period:
@@ -761,8 +1070,7 @@ class JoyConTeleop(Node):
         position_changed = any(abs(value) > 1.0e-8 for value in delta)
         proposed = {
             "position": [
-                arm.target_pose["position"][index] + delta[index]
-                for index in range(3)
+                arm.target_pose["position"][index] + delta[index] for index in range(3)
             ],
             "orientation": list(arm.target_pose["orientation"]),
         }
@@ -777,13 +1085,9 @@ class JoyConTeleop(Node):
                 arm.joy_anchor_rpy = [
                     float(value) for value in sample["orientation_rpy"]
                 ]
-                arm.joy_anchor_orientation = list(
-                    arm.target_pose["orientation"]
-                )
+                arm.joy_anchor_orientation = list(arm.target_pose["orientation"])
             else:
-                max_delta = float(
-                    self.get_parameter("max_orientation_delta_rad").value
-                )
+                max_delta = float(self.get_parameter("max_orientation_delta_rad").value)
                 scale = float(self.get_parameter("orientation_scale").value)
                 signs = [
                     float(value)
@@ -809,10 +1113,7 @@ class JoyConTeleop(Node):
                     proposed["orientation"] = step_orientation_toward(
                         proposed["orientation"],
                         commanded,
-                        float(
-                            self.get_parameter("orientation_speed_rad_s").value
-                        )
-                        * dt,
+                        float(self.get_parameter("orientation_speed_rad_s").value) * dt,
                     )
                     orientation_changed = True
         if arm.orientation_reference is not None:
@@ -835,9 +1136,21 @@ class JoyConTeleop(Node):
                 orientation_changed = True
         if position_changed or orientation_changed:
             self.request_ik(
-                side, proposed, now,
+                side,
+                proposed,
+                now,
                 allow_position_fallback=position_changed,
             )
+
+    def update_gripper_button(self, side: str, pressed: bool, now: float) -> None:
+        """Toggle once per debounced trigger press, identically on both sides."""
+        arm = self.arms[side]
+        rising_edge = pressed and not arm.trigger_was_pressed
+        arm.trigger_was_pressed = pressed
+        debounce = float(self.get_parameter("gripper_button_debounce_sec").value)
+        if rising_edge and now - arm.last_gripper_toggle >= debounce:
+            arm.last_gripper_toggle = now
+            self.toggle_gripper(side)
 
     def toggle_gripper(self, side: str) -> None:
         name = f"{side}_gripper"
@@ -865,7 +1178,10 @@ class JoyConTeleop(Node):
         sticks = []
         turn = 0.0
         if right is not None:
-            if bool(right["buttons"]["shoulder"]):
+            arm_clutch = bool(right["buttons"].get("sl") or right["buttons"].get("sr"))
+            if arm_clutch:
+                pass
+            elif bool(right["buttons"]["shoulder"]):
                 # R + right stick left/right: base turn only.
                 turn += normalize_stick(right["stick"][0], self.deadzone)
             else:
@@ -876,7 +1192,8 @@ class JoyConTeleop(Node):
                     )
                 )
         if left is not None:
-            if lift_active or bool(left["buttons"]["shoulder"]):
+            arm_clutch = bool(left["buttons"].get("sl") or left["buttons"].get("sr"))
+            if arm_clutch or lift_active or bool(left["buttons"]["shoulder"]):
                 # L held: the left stick is reserved for the lift (vertical)
                 # and contributes no base translation.
                 pass
@@ -895,9 +1212,7 @@ class JoyConTeleop(Node):
         yaw = -max(-1.0, min(1.0, turn)) * float(
             self.get_parameter("base_angular_speed_rad_s").value
         )
-        active = any(
-            abs(value) > 1.0e-9 for value in (vx, vy, yaw)
-        )
+        active = any(abs(value) > 1.0e-9 for value in (vx, vy, yaw))
         if active:
             if self.hardware_mode:
                 message = Twist()
@@ -926,14 +1241,13 @@ class JoyConTeleop(Node):
             now - self.last_measured_state > self.measured_state_timeout
         ):
             issues.append("no fresh measured /joint_states")
-        for name, client in self.arm_clients.items():
-            if not client.server_is_ready():
-                issues.append(f"{name} action server not ready")
+        if self.arm_control_mode == "moveit":
+            for name, client in self.arm_clients.items():
+                if not client.server_is_ready():
+                    issues.append(f"{name} action server not ready")
         if issues:
             self.last_readiness_log = now
-            self.get_logger().warning(
-                "hardware not ready yet: " + "; ".join(issues)
-            )
+            self.get_logger().warning("hardware not ready yet: " + "; ".join(issues))
             return
         if not self.readiness_announced:
             self.readiness_announced = True
@@ -948,8 +1262,7 @@ class JoyConTeleop(Node):
             self.last_enable_attempt = now
             if self.enable_client.service_is_ready():
                 self.get_logger().info(
-                    "auto-enabling bridge commands "
-                    "(/alohamini_lerobot_bridge/command_enable)"
+                    "auto-enabling bridge commands (/alohamini_lerobot_bridge/command_enable)"
                 )
                 from std_srvs.srv import SetBool
 
@@ -968,8 +1281,7 @@ class JoyConTeleop(Node):
             if response.success:
                 self.commands_enabled = True
                 self.get_logger().info(
-                    "bridge commands enabled; resources remain idle until "
-                    "new operator input"
+                    "bridge commands enabled; resources remain idle until new operator input"
                 )
             else:
                 self.get_logger().warning(
@@ -1041,6 +1353,7 @@ class JoyConTeleop(Node):
         now = time.monotonic()
         dt = min(0.1, max(0.0, now - self.last_loop))
         self.last_loop = now
+        self.max_control_dt_ms = max(self.max_control_dt_ms, dt * 1.0e3)
         self.receive_inputs(now)
         left = self.sample("left", now)
         right = self.sample("right", now)
@@ -1057,9 +1370,16 @@ class JoyConTeleop(Node):
         if not measured_fresh:
             left = None
             right = None
-        lift_active = bool(
-            left is not None and left["buttons"]["shoulder"]
-        )
+        if left is None:
+            self.left_lift_stick_latched = False
+        else:
+            self.left_lift_stick_latched = next_lift_stick_latch(
+                self.left_lift_stick_latched,
+                left["buttons"],
+                left["stick"][1],
+                self.deadzone,
+            )
+        lift_active = self.left_lift_stick_latched
         self.update_lift(left, lift_active, now, dt)
         self.update_base(left, right, lift_active, dt)
         # Moving the lift moves both arm bases. Do not mix a cached Cartesian
@@ -1070,6 +1390,21 @@ class JoyConTeleop(Node):
         self.update_arm("left", arm_left, now, dt)
         self.update_arm("right", arm_right, now, dt)
         self.publish_preview()
+        if now - self.last_timing_log >= 5.0:
+            self.last_timing_log = now
+            self.get_logger().info(
+                "Joy-Con timing: "
+                + ", ".join(
+                    f"{side} dropped={self.input_dropped[side]} "
+                    f"max_age={self.input_max_age_ms[side]:.1f}ms "
+                    f"max_dls={self.max_dls_ms[side]:.1f}ms"
+                    for side in ("left", "right")
+                )
+                + f", max_loop_dt={self.max_control_dt_ms:.1f}ms"
+            )
+            self.input_max_age_ms = dict.fromkeys(("left", "right"), 0.0)
+            self.max_dls_ms = dict.fromkeys(("left", "right"), 0.0)
+            self.max_control_dt_ms = 0.0
 
 
 def main() -> None:

@@ -2,13 +2,12 @@ from __future__ import annotations
 
 import math
 import time
+from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import Enum
 from threading import RLock
-from typing import Iterable
 
 from .protocol import BodyVelocity, CommandGate, JointMapper
-
 
 LEFT_ARM_JOINTS = (
     "left_shoulder_pan",
@@ -68,13 +67,8 @@ class TrajectoryResource:
             raise ValueError(f"{name} tracking_error must be finite and positive")
         if not math.isfinite(self.goal_tolerance) or self.goal_tolerance <= 0.0:
             raise ValueError(f"{name} goal_tolerance must be finite and positive")
-        if (
-            not math.isfinite(self.goal_time_tolerance)
-            or self.goal_time_tolerance < 0.0
-        ):
-            raise ValueError(
-                f"{name} goal_time_tolerance must be finite and non-negative"
-            )
+        if not math.isfinite(self.goal_time_tolerance) or self.goal_time_tolerance < 0.0:
+            raise ValueError(f"{name} goal_time_tolerance must be finite and non-negative")
         if self.hold_duration != math.inf and (
             not math.isfinite(self.hold_duration) or self.hold_duration < 0.0
         ):
@@ -86,12 +80,44 @@ class TrajectoryResource:
         self.samples: tuple[TrajectorySample, ...] = ()
         self.hold_positions: dict[str, float] | None = None
         self.hold_until = 0.0
+        self.stream_positions: dict[str, float] | None = None
+        self.stream_until = 0.0
         self.desired: dict[str, float] | None = None
         self.terminals: dict[int, TerminalEvent] = {}
 
     @property
     def active(self) -> bool:
-        return self.active_goal_id is not None or self.hold_positions is not None
+        return (
+            self.active_goal_id is not None
+            or self.hold_positions is not None
+            or self.stream_positions is not None
+        )
+
+    def accept_stream_target(
+        self,
+        positions: dict[str, float],
+        measured: dict[str, float],
+        now: float,
+        timeout: float,
+    ) -> None:
+        """Replace the latest realtime setpoint without creating an Action goal."""
+        if set(positions) != set(self.joints):
+            raise ValueError(f"{self.name} stream must contain exactly {self.joints}")
+        if any(not math.isfinite(value) for value in positions.values()):
+            raise ValueError(f"{self.name} stream positions must be finite")
+        if any(joint not in measured for joint in self.joints):
+            raise ValueError(f"fresh measured state lacks {self.joints}")
+        if self.active_goal_id is not None:
+            self._finish(
+                TerminalState.PREEMPTED,
+                "preempted by realtime JointJog",
+                measured,
+                now,
+                hold=False,
+            )
+        self.hold_positions = None
+        self.stream_positions = dict(positions)
+        self.stream_until = now + timeout
 
     def validate(self, joint_names: Iterable[str], samples: Iterable[TrajectorySample]) -> None:
         names = tuple(joint_names)
@@ -140,6 +166,7 @@ class TrajectoryResource:
         self.start_positions = {joint: float(measured[joint]) for joint in self.joints}
         self.samples = samples
         self.hold_positions = None
+        self.stream_positions = None
         self.desired = dict(self.start_positions)
         return self.goal_id
 
@@ -152,19 +179,16 @@ class TrajectoryResource:
         hold: bool = True,
     ) -> None:
         if self.active_goal_id is not None:
-            self.terminals[self.active_goal_id] = TerminalEvent(
-                self.active_goal_id, state, message
-            )
+            self.terminals[self.active_goal_id] = TerminalEvent(self.active_goal_id, state, message)
         self.active_goal_id = None
         self.samples = ()
         self.desired = None
         if hold and measured is not None and all(joint in measured for joint in self.joints):
-            self.hold_positions = {
-                joint: float(measured[joint]) for joint in self.joints
-            }
+            self.hold_positions = {joint: float(measured[joint]) for joint in self.joints}
             self.hold_until = now + self.hold_duration
         else:
             self.hold_positions = None
+        self.stream_positions = None
 
     def cancel(self, goal_id: int, measured: dict[str, float], fresh: bool, now: float) -> bool:
         if goal_id != self.active_goal_id:
@@ -188,7 +212,9 @@ class TrajectoryResource:
         )
 
     def terminal(self, goal_id: int) -> TerminalEvent | None:
-        return self.terminals.get(goal_id)
+        # Each action execute callback consumes its terminal event exactly once. This
+        # bounds memory when teleoperation continuously preempts short trajectories.
+        return self.terminals.pop(goal_id, None)
 
     def _interpolate(self, elapsed: float) -> dict[str, float]:
         previous_time = 0.0
@@ -206,13 +232,20 @@ class TrajectoryResource:
             previous = {**previous, **point.positions}
         return dict(previous)
 
-    def update(
-        self, measured: dict[str, float], fresh: bool, now: float
-    ) -> dict[str, float] | None:
+    def update(self, measured: dict[str, float], fresh: bool, now: float) -> dict[str, float] | None:
         if not fresh:
             if self.active:
                 self.invalidate_stale(now)
             return None
+        if self.stream_positions is not None:
+            if now > self.stream_until:
+                self.stream_positions = None
+                return None
+            error = max(abs(self.stream_positions[joint] - measured[joint]) for joint in self.joints)
+            if error > self.tracking_error:
+                self.stream_positions = None
+                return None
+            return dict(self.stream_positions)
         if self.active_goal_id is not None:
             desired = self._interpolate(now - self.start_time)
             error = max(abs(desired[joint] - measured[joint]) for joint in self.joints)
@@ -330,19 +363,13 @@ class CommandComposer:
         }
         self.enabled = False
         self.lift_jog_lookahead = float(lift_jog_lookahead)
-        if (
-            not math.isfinite(self.lift_jog_lookahead)
-            or self.lift_jog_lookahead <= 0.0
-        ):
+        if not math.isfinite(self.lift_jog_lookahead) or self.lift_jog_lookahead <= 0.0:
             raise ValueError("lift_jog_lookahead must be finite and positive")
         self.lift_jog_active = False
         self.lift_jog_velocity = 0.0
         self.lift_jog_time = 0.0
         self.lift_jog_stop_settle = float(lift_jog_stop_settle)
-        if (
-            not math.isfinite(self.lift_jog_stop_settle)
-            or self.lift_jog_stop_settle < 0.0
-        ):
+        if not math.isfinite(self.lift_jog_stop_settle) or self.lift_jog_stop_settle < 0.0:
             raise ValueError("lift_jog_stop_settle must be finite and non-negative")
         self.lift_jog_stop_pending = False
         self.lift_jog_stop_time = 0.0
@@ -363,6 +390,7 @@ class CommandComposer:
                 resource.active_goal_id = None
                 resource.samples = ()
                 resource.hold_positions = None
+                resource.stream_positions = None
                 resource.desired = None
 
     def disable(self) -> bool:
@@ -382,6 +410,7 @@ class CommandComposer:
                     now,
                     hold=False,
                 )
+                resource.stream_positions = None
             return should_stop
 
     def disable_action(
@@ -407,9 +436,7 @@ class CommandComposer:
                         action["lift_axis.vel"] = 0.0
                         continue
                     for joint in resource.joints:
-                        key, value = self.mapper.urdf_to_lerobot(
-                            joint, measured[joint], metadata
-                        )
+                        key, value = self.mapper.urdf_to_lerobot(joint, measured[joint], metadata)
                         action[key] = value
             except (KeyError, TypeError, ValueError, OverflowError):
                 return {"x.vel": 0.0, "y.vel": 0.0, "theta.vel": 0.0}
@@ -461,6 +488,40 @@ class CommandComposer:
             self.lift_jog_velocity = velocity
             self.lift_jog_time = now
             self.lift_jog_stop_pending = False
+
+    def accept_arm_jog(
+        self,
+        resource: str,
+        joint_names: Iterable[str],
+        displacements: Iterable[float],
+        measured: dict[str, float],
+        fresh: bool,
+        timeout: float,
+        now: float | None = None,
+    ) -> None:
+        """Accept a latest-only arm setpoint carried by standard JointJog."""
+        with self.lock:
+            if not self.enabled:
+                raise ValueError("ROS command channel is disabled")
+            if resource not in ("left_arm", "right_arm"):
+                raise ValueError(f"unsupported arm jog resource {resource}")
+            if not fresh:
+                raise ValueError("fresh Host observation is required")
+            names = tuple(joint_names)
+            values = tuple(float(value) for value in displacements)
+            controller = self.resources[resource]
+            if names != controller.joints or len(values) != len(names):
+                raise ValueError(f"{resource} JointJog must contain joints in canonical order")
+            target = {
+                joint: float(measured[joint]) + displacement
+                for joint, displacement in zip(names, values, strict=True)
+            }
+            controller.accept_stream_target(
+                target,
+                measured,
+                time.monotonic() if now is None else now,
+                timeout,
+            )
 
     def start_trajectory(
         self,
@@ -515,8 +576,7 @@ class CommandComposer:
                 return None
             now = time.monotonic() if now is None else now
             if permitted and any(
-                resource.active
-                and any(joint not in measured for joint in resource.joints)
+                resource.active and any(joint not in measured for joint in resource.joints)
                 for resource in self.resources.values()
             ):
                 permitted = False
@@ -567,24 +627,18 @@ class CommandComposer:
                             self.lift_jog_velocity,
                         )
                         target = max(-0.3, min(0.3, target))
-                        action["lift_axis.height_mm"] = (
-                            self.mapper.lift_urdf_to_height(target)
-                        )
+                        action["lift_axis.height_mm"] = self.mapper.lift_urdf_to_height(target)
                         continue
                     targets = resource.update(measured, True, now)
                     if targets is None:
                         continue
                     if name == "lift":
-                        action["lift_axis.height_mm"] = (
-                            self.mapper.lift_urdf_to_height(
-                                targets["vertical_move"]
-                            )
+                        action["lift_axis.height_mm"] = self.mapper.lift_urdf_to_height(
+                            targets["vertical_move"]
                         )
                         continue
                     for joint, position in targets.items():
-                        key, value = self.mapper.urdf_to_lerobot(
-                            joint, position, metadata
-                        )
+                        key, value = self.mapper.urdf_to_lerobot(joint, position, metadata)
                         action[key] = value
             except (KeyError, TypeError, ValueError, OverflowError) as error:
                 for resource in self.resources.values():

@@ -2,16 +2,19 @@ import math
 
 import pytest
 import yaml
-from ament_index_python.packages import get_package_share_directory
-
 from alohamini_joycon_teleop.mapping import (
     LEVEL_TCP_QUATERNION,
     base_command,
+    faucet_translation_velocity,
     integrate_base_preview,
+    lift_stick_requested,
+    next_lift_stick_latch,
     normalize_stick,
+    relative_quaternion,
     step_orientation_toward,
     tcp_button_delta,
 )
+from ament_index_python.packages import get_package_share_directory
 
 
 def test_stick_deadzone_and_range():
@@ -65,17 +68,39 @@ def test_tcp_shoulder_combo_is_z():
     assert tcp_button_delta(
         _buttons(shoulder=True, down=True), speed, dt
     ) == pytest.approx([0.0, 0.0, -step])
+    assert tcp_button_delta(
+        _buttons(shoulder=True, left=True), speed, dt
+    ) == pytest.approx([0.0, 0.0, 0.0])
+    assert tcp_button_delta(
+        _buttons(shoulder=True, right=True), speed, dt
+    ) == pytest.approx([0.0, 0.0, 0.0])
+
+
+def test_lift_requires_shoulder_and_vertical_stick_outside_deadzone():
+    assert lift_stick_requested(_buttons(shoulder=True), 4095.0, 0.25)
+    assert not lift_stick_requested(_buttons(shoulder=True), 2048.0, 0.25)
+    assert not lift_stick_requested(_buttons(), 4095.0, 0.25)
+    assert not lift_stick_requested(
+        _buttons(shoulder=True, sl=True), 4095.0, 0.25
+    )
+
+
+def test_lift_gesture_stays_latched_until_stick_centers():
+    held = _buttons(shoulder=True)
+    false_report = _buttons(shoulder=False)
+    clutch = _buttons(shoulder=False, sl=True)
+
+    assert next_lift_stick_latch(False, held, 4095.0, 0.25)
+    assert next_lift_stick_latch(True, false_report, 4095.0, 0.25)
+    assert not next_lift_stick_latch(True, false_report, 2048.0, 0.25)
+    assert not next_lift_stick_latch(True, clutch, 4095.0, 0.25)
 
 
 def test_base_command_translation():
     # Single stick: up = forward, right = right strafe; yaw is handled by the
     # caller (shoulder-modified turn stick).
-    assert base_command([(0.0, 1.0)], 0.2, 0.5) == pytest.approx(
-        (0.2, 0.0, 0.0)
-    )
-    assert base_command([(1.0, 0.0)], 0.2, 0.5) == pytest.approx(
-        (0.0, -0.2, 0.0)
-    )
+    assert base_command([(0.0, 1.0)], 0.2, 0.5) == pytest.approx((0.2, 0.0, 0.0))
+    assert base_command([(1.0, 0.0)], 0.2, 0.5) == pytest.approx((0.0, -0.2, 0.0))
     # Two sticks sum and clamp.
     assert base_command([(0.5, 0.0), (0.5, 0.0)], 0.2, 0.5) == pytest.approx(
         (0.0, -0.2, 0.0)
@@ -89,6 +114,21 @@ def test_base_preview_uses_rep103_axes():
     assert integrate_base_preview(
         [1.0, 2.0, 0.25], 0.4, -0.2, 0.5, 0.5
     ) == pytest.approx([1.2, 1.9, 0.5])
+
+
+def test_faucet_translation_is_xyz_not_tcp_frame_translation():
+    identity = [0.0, 0.0, 0.0, 1.0]
+    assert faucet_translation_velocity(0.0, 1.0, identity, 0.1) == pytest.approx(
+        [0.0, -0.1, 0.0]
+    )
+    # Relative +90 degree yaw turns the nozzle's forward direction toward +X.
+    yaw_90 = [0.0, 0.0, math.sin(math.pi / 4), math.cos(math.pi / 4)]
+    assert faucet_translation_velocity(0.0, 1.0, yaw_90, 0.1) == pytest.approx(
+        [0.1, 0.0, 0.0], abs=1.0e-9
+    )
+def test_relative_quaternion_removes_arbitrary_latch_attitude():
+    anchor = [math.sin(0.3), 0.0, 0.0, math.cos(0.3)]
+    assert relative_quaternion(anchor, anchor) == pytest.approx([0.0, 0.0, 0.0, 1.0])
 
 
 def test_orientation_step_is_rate_limited():
@@ -152,4 +192,6 @@ def test_level_tcp_quaternion_matches_fk_golden_reference():
     # carries ~1e-12 rounding noise, so allow a small tolerance.
     for expected, actual in zip(LEVEL_TCP_QUATERNION, quaternion, strict=True):
         assert abs(expected - actual) < 1.0e-4 or abs(expected + actual) < 1.0e-4
-    assert math.sqrt(sum(value * value for value in LEVEL_TCP_QUATERNION)) == pytest.approx(1.0)
+    assert math.sqrt(
+        sum(value * value for value in LEVEL_TCP_QUATERNION)
+    ) == pytest.approx(1.0)

@@ -8,12 +8,95 @@ the robot Host and cannot send a robot command.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
+import math
 import signal
 import time
 from pathlib import Path
 
 import zmq
+
+
+def wrap_angle(angle: float) -> float:
+    return (angle + math.pi) % (2.0 * math.pi) - math.pi
+
+
+class ComplementaryAttitudeEstimator:
+    """Relative yaw gyro integration with gravity-corrected roll and pitch."""
+
+    def __init__(self, gravity_gain: float = 0.02) -> None:
+        self.gravity_gain = float(gravity_gain)
+        self.rpy = [0.0, 0.0, 0.0]
+        self.initialized = False
+        self.last_update: float | None = None
+
+    @staticmethod
+    def gravity_angles(accel: list[float]) -> tuple[float, float]:
+        ax, ay, az = accel
+        return (
+            math.atan2(ay, -az),
+            math.atan2(ax, math.sqrt(ay * ay + az * az)),
+        )
+
+    def update(
+        self,
+        gyro_samples: list[list[float]],
+        accel_samples: list[list[float]],
+        now: float,
+    ) -> list[float]:
+        if not gyro_samples or len(gyro_samples) != len(accel_samples):
+            return list(self.rpy)
+        elapsed = (
+            1.0 / 50.0
+            if self.last_update is None
+            else min(0.05, max(0.001, now - self.last_update))
+        )
+        self.last_update = now
+        sample_dt = elapsed / len(gyro_samples)
+        for gyro, accel in zip(gyro_samples, accel_samples, strict=True):
+            roll_acc, pitch_acc = self.gravity_angles(accel)
+            if not self.initialized:
+                self.rpy[:2] = [roll_acc, pitch_acc]
+                self.initialized = True
+            gx, gy, gz = gyro
+            self.rpy[0] = wrap_angle(self.rpy[0] - gx * sample_dt)
+            self.rpy[1] = wrap_angle(self.rpy[1] + gy * sample_dt)
+            self.rpy[2] = wrap_angle(self.rpy[2] - gz * sample_dt)
+            self.rpy[0] += self.gravity_gain * wrap_angle(roll_acc - self.rpy[0])
+            self.rpy[1] += self.gravity_gain * wrap_angle(pitch_acc - self.rpy[1])
+        return [wrap_angle(value) for value in self.rpy]
+
+
+class SingleHidJoyCon:
+    """One physical HID reader shared by buttons, sticks and IMU."""
+
+    def __init__(self, side: str, skip_calibration: bool) -> None:
+        from joyconrobotics.device import get_L_id, get_R_id
+        from joyconrobotics.gyro import GyroTrackingJoyCon
+
+        joycon_id = get_L_id() if side == "left" else get_R_id()
+        self.joycon = GyroTrackingJoyCon(*joycon_id)
+        self.gyro = self.joycon
+        self.attitude = ComplementaryAttitudeEstimator()
+        self.last_report_counter: int | None = None
+        if not skip_calibration:
+            self.joycon.calibrate(seconds=2)
+            time.sleep(2.1)
+            self.joycon.reset_orientation()
+
+    def orientation(self, report_counter: int) -> list[float]:
+        if report_counter == self.last_report_counter:
+            return list(self.attitude.rpy)
+        self.last_report_counter = report_counter
+        return self.attitude.update(
+            _vectors(self.gyro.gyro_in_rad),
+            _vectors(self.gyro.accel_in_g),
+            time.monotonic(),
+        )
+
+    def disconnnect(self) -> None:
+        self.joycon._close()
 
 
 def parse_args() -> argparse.Namespace:
@@ -31,8 +114,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--stick-log",
         default=str(Path.home() / "joycon_sticks.log"),
-        help="Append-only raw stick log for diagnostics (default "
-        "~/joycon_sticks.log).",
+        help="Append-only raw stick log for diagnostics (default ~/joycon_sticks.log).",
     )
     return parser.parse_args()
 
@@ -87,16 +169,50 @@ def button_state(controller, side: str) -> dict[str, bool]:
     return common
 
 
+def euler_xyz_quaternion(roll: float, pitch: float, yaw: float) -> list[float]:
+    cr, sr = math.cos(roll / 2.0), math.sin(roll / 2.0)
+    cp, sp = math.cos(pitch / 2.0), math.sin(pitch / 2.0)
+    cy, sy = math.cos(yaw / 2.0), math.sin(yaw / 2.0)
+    return [
+        sr * cp * cy - cr * sp * sy,
+        cr * sp * cy + sr * cp * sy,
+        cr * cp * sy - sr * sp * cy,
+        cr * cp * cy + sr * sp * sy,
+    ]
+
+
+def _vectors(values) -> list[list[float]]:
+    return [[float(component) for component in value] for value in values]
+
+
 def sample(controller, side: str, sequence: int) -> dict:
-    stick_vertical, stick_horizontal, _ = controller.get_stick()
-    posture, _, _ = controller.get_control()
+    joycon = controller.joycon
+    if side == "left":
+        stick_vertical = joycon.get_stick_left_vertical()
+        stick_horizontal = joycon.get_stick_left_horizontal()
+    else:
+        stick_vertical = joycon.get_stick_right_vertical()
+        stick_horizontal = joycon.get_stick_right_horizontal()
+    # The native report contains three IMU samples. Preserve all of them so a
+    # recorded ZMQ stream can be replayed through a better attitude estimator;
+    # do not reduce the control input to an already-filtered Euler triple.
+    gyro = controller.gyro
+    report = bytes(gyro._input_report)
+    report_counter = int(report[1]) if len(report) > 1 else -1
+    orientation_rpy = controller.orientation(report_counter)
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "side": side,
         "sequence": sequence,
         "monotonic_ns": time.monotonic_ns(),
+        "report_counter": report_counter,
         "stick": [float(stick_horizontal), float(stick_vertical)],
-        "orientation_rpy": [float(value) for value in posture[3:6]],
+        "imu": {
+            "accel_g": _vectors(gyro.accel_in_g),
+            "gyro_rad_s": _vectors(gyro.gyro_in_rad),
+        },
+        "orientation_rpy": orientation_rpy,
+        "orientation_xyzw": euler_xyz_quaternion(*orientation_rpy),
         "buttons": button_state(controller, side),
     }
 
@@ -105,8 +221,6 @@ def main() -> int:
     args = parse_args()
     if args.rate_hz <= 0.0:
         raise ValueError("rate-hz must be positive")
-    from joyconrobotics import JoyconRobotics
-
     context = zmq.Context()
     publisher = context.socket(zmq.PUB)
     publisher.setsockopt(zmq.LINGER, 0)
@@ -130,19 +244,17 @@ def main() -> int:
                 "relative to the latch point of that controller.",
                 flush=True,
             )
-            controllers[side] = JoyconRobotics(
-                device=side,
-                without_rest_init=args.skip_imu_calibration,
-            )
+            controllers[side] = SingleHidJoyCon(side, args.skip_imu_calibration)
         period = 1.0 / args.rate_hz
         sequence = 0
-        signatures = {side: None for side in controllers}
-        frozen_since = {side: None for side in controllers}
-        reconnect_cooldown = {side: 0.0 for side in controllers}
-        stick_log_baseline = {side: None for side in controllers}
-        stick_log_time = {side: 0.0 for side in controllers}
-        log_baseline = {side: None for side in controllers}
-        log_deadline = {side: 0.0 for side in controllers}
+        report_counters = dict.fromkeys(controllers)
+        frozen_since = dict.fromkeys(controllers)
+        reconnect_cooldown = dict.fromkeys(controllers, 0.0)
+        stick_log_baseline = dict.fromkeys(controllers)
+        stick_log_time = dict.fromkeys(controllers, 0.0)
+        log_baseline = dict.fromkeys(controllers)
+        log_deadline = dict.fromkeys(controllers, 0.0)
+        log_write_time = dict.fromkeys(controllers, 0.0)
         with open(args.stick_log, "a", encoding="utf-8") as stick_log:
             stick_log.write(f"# reader restarted at {time.time():.1f}\n")
             while not stop:
@@ -150,28 +262,26 @@ def main() -> int:
                 sequence += 1
                 for side, controller in controllers.items():
                     payload = sample(controller, side, sequence)
-                    signature = (
-                        tuple(payload["stick"]),
-                        tuple(payload["orientation_rpy"]),
-                        tuple(sorted(payload["buttons"].items())),
-                    )
                     now = time.monotonic()
                     stick = tuple(payload["stick"])
                     # Append raw sticks to the on-disk log whenever they move
                     # (or every 10 s), so stick health can be inspected after
                     # the fact without timing coordination.
-                    stick = tuple(payload["stick"])
                     log_last = log_baseline[side]
                     if (
                         log_last is None
-                        or max(
-                            abs(stick[0] - log_last[0]),
-                            abs(stick[1] - log_last[1]),
+                        or (
+                            max(
+                                abs(stick[0] - log_last[0]),
+                                abs(stick[1] - log_last[1]),
+                            )
+                            >= 2
+                            and now - log_write_time[side] >= 0.2
                         )
-                        >= 2
                         or now >= log_deadline[side]
                     ):
                         log_baseline[side] = stick
+                        log_write_time[side] = now
                         log_deadline[side] = now + 10.0
                         stick_log.write(
                             f"{time.time():.2f} {side} H={stick[0]:.0f} "
@@ -198,7 +308,12 @@ def main() -> int:
                             f"[{side}] stick H={stick[0]:.0f} V={stick[1]:.0f}",
                             flush=True,
                         )
-                    if signature == signatures[side]:
+                    # A stationary controller legitimately has unchanged sticks,
+                    # buttons and a nearly constant attitude. Detect a dead HID
+                    # reader from Nintendo's incrementing report counter instead
+                    # of interpreting stationary data as a disconnect.
+                    report_counter = payload["report_counter"]
+                    if report_counter == report_counters[side]:
                         if frozen_since[side] is None:
                             frozen_since[side] = now
                         elif (
@@ -212,39 +327,33 @@ def main() -> int:
                             # sticks/buttons cannot be sent.
                             reconnect_cooldown[side] = now
                             print(
-                                f"[{side}] Joy-Con input report frozen; "
-                                "reopening the device",
+                                f"[{side}] Joy-Con input report frozen; reopening the device",
                                 flush=True,
                             )
                             try:
                                 controller.disconnnect()
-                                controllers[side] = JoyconRobotics(
-                                    device=side, without_rest_init=True
+                                controllers[side] = SingleHidJoyCon(
+                                    side, skip_calibration=True
                                 )
-                                signatures[side] = None
+                                report_counters[side] = None
                                 frozen_since[side] = None
                                 stick_log_baseline[side] = None
                                 log_baseline[side] = None
                                 payload = sample(controllers[side], side, sequence)
                             except Exception as exc:
                                 print(
-                                    f"[{side}] reconnect failed ({exc}); "
-                                    "will retry",
+                                    f"[{side}] reconnect failed ({exc}); will retry",
                                     flush=True,
                                 )
                     else:
                         frozen_since[side] = None
-                    signatures[side] = signature
-                    publisher.send_string(
-                        json.dumps(payload, separators=(",", ":"))
-                    )
+                    report_counters[side] = report_counter
+                    publisher.send_string(json.dumps(payload, separators=(",", ":")))
                 time.sleep(max(0.0, period - (time.monotonic() - started)))
     finally:
         for controller in controllers.values():
-            try:
+            with contextlib.suppress(Exception):
                 controller.disconnnect()
-            except Exception:
-                pass
         publisher.close()
         context.term()
     return 0

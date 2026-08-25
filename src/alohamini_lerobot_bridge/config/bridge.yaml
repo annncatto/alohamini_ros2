@@ -21,6 +21,10 @@ alohamini_lerobot_bridge:
     require_model_match: true
     cmd_vel_topic: /cmd_vel
     lift_jog_topic: /lift_controller/joint_jog
+    left_arm_jog_topic: /left_arm_controller/joint_jog
+    right_arm_jog_topic: /right_arm_controller/joint_jog
+    arm_jog_timeout_sec: 0.15
+    max_arm_jog_displacement_rad: 0.10
     joint_states_topic: /joint_states
     base_velocity_topic: /alohamini/base_velocity
     base_frame: base_link

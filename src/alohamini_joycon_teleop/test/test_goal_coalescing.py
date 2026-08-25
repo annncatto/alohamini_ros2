@@ -1,5 +1,7 @@
-import pytest
+from types import SimpleNamespace
 
+import pytest
+from action_msgs.msg import GoalStatus
 from alohamini_joycon_teleop.teleop_node import ArmControl, JoyConTeleop
 from sensor_msgs.msg import JointState
 
@@ -13,6 +15,68 @@ def test_busy_arm_keeps_only_the_latest_goal():
     node.send_arm_goal("left", [3.0, 4.0])
 
     assert arm.queued_positions == [3.0, 4.0]
+
+
+class _ResultFuture:
+    def __init__(self):
+        self.callback = None
+
+    def add_done_callback(self, callback):
+        self.callback = callback
+
+
+class _AcceptedHandle:
+    accepted = True
+
+    def __init__(self):
+        self.result_future = _ResultFuture()
+
+    def get_result_async(self):
+        return self.result_future
+
+
+def test_accepted_goal_immediately_streams_latest_queued_target():
+    node = object.__new__(JoyConTeleop)
+    arm = ArmControl(
+        active=True,
+        goal_busy=True,
+        queued_positions=[3.0, 4.0],
+    )
+    node.arms = {"left": arm}
+    node.get_parameter = lambda _name: SimpleNamespace(value=True)
+    streamed = []
+    node.send_arm_goal = lambda side, positions: streamed.append(
+        (side, positions)
+    )
+    handle = _AcceptedHandle()
+
+    JoyConTeleop.on_arm_goal_response(
+        node, "left", SimpleNamespace(result=lambda: handle)
+    )
+
+    assert not arm.goal_busy
+    assert arm.goal_handle is handle
+    assert arm.queued_positions is None
+    assert streamed == [("left", [3.0, 4.0])]
+    assert handle.result_future.callback is not None
+
+
+def test_expected_preemption_does_not_latch_arm_fault():
+    node = object.__new__(JoyConTeleop)
+    handle = object()
+    arm = ArmControl(active=True, goal_busy=True, goal_handle=handle)
+    node.arms = {"left": arm}
+    response = SimpleNamespace(
+        status=GoalStatus.STATUS_ABORTED,
+        result=SimpleNamespace(error_code=-1, error_string=""),
+    )
+
+    JoyConTeleop.on_arm_result(
+        node, "left", handle, SimpleNamespace(result=lambda: response)
+    )
+
+    assert not arm.fault_latched
+    assert arm.active
 
 
 class _ArmParameter:
@@ -153,3 +217,44 @@ def test_first_measured_lift_state_updates_removed_hold_state_safely():
 
     assert harness.measured_lift == -0.12
     assert harness.lift_target == -0.12
+
+
+def test_gripper_trigger_is_edge_detected_and_debounced_on_both_sides():
+    harness = object.__new__(JoyConTeleop)
+    harness.arms = {"left": ArmControl(), "right": ArmControl()}
+    harness.get_parameter = lambda _name: SimpleNamespace(value=0.30)
+    toggles = []
+    harness.toggle_gripper = lambda side: toggles.append(side)
+
+    for side in ("left", "right"):
+        JoyConTeleop.update_gripper_button(harness, side, True, 1.00)
+        JoyConTeleop.update_gripper_button(harness, side, False, 1.05)
+        JoyConTeleop.update_gripper_button(harness, side, True, 1.10)
+        JoyConTeleop.update_gripper_button(harness, side, False, 1.15)
+        JoyConTeleop.update_gripper_button(harness, side, True, 1.31)
+
+    assert toggles == ["left", "left", "right", "right"]
+
+
+def test_command_buttons_ignore_short_false_reports_then_release():
+    harness = object.__new__(JoyConTeleop)
+    harness.input_timeout = 0.25
+    harness.button_last_true = {"left": {}, "right": {}}
+    harness.get_parameter = lambda _name: SimpleNamespace(value=0.12)
+    buttons = {
+        "shoulder": True,
+        "sl": False,
+        "sr": False,
+        "up": False,
+        "down": False,
+        "left": False,
+        "right": False,
+    }
+    harness.samples = {
+        "left": SimpleNamespace(received_at=1.0, payload={"buttons": buttons})
+    }
+
+    assert JoyConTeleop.sample(harness, "left", 1.00)["buttons"]["shoulder"]
+    buttons["shoulder"] = False
+    assert JoyConTeleop.sample(harness, "left", 1.05)["buttons"]["shoulder"]
+    assert not JoyConTeleop.sample(harness, "left", 1.13)["buttons"]["shoulder"]

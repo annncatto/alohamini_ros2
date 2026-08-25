@@ -29,6 +29,67 @@ def quaternion_multiply(left: list[float], right: list[float]) -> list[float]:
     return [value / norm for value in result]
 
 
+def quaternion_conjugate(quaternion: list[float]) -> list[float]:
+    x, y, z, w = quaternion
+    norm_squared = sum(value * value for value in quaternion)
+    if norm_squared <= 1.0e-12:
+        raise ValueError("zero quaternion")
+    return [-x / norm_squared, -y / norm_squared, -z / norm_squared, w / norm_squared]
+
+
+def quaternion_rotate_vector(
+    quaternion: list[float], vector: list[float]
+) -> list[float]:
+    """Rotate a 3-vector by an XYZW quaternion without allocating matrices."""
+    x, y, z, w = quaternion
+    norm = math.sqrt(x * x + y * y + z * z + w * w)
+    if norm <= 1.0e-12:
+        raise ValueError("zero quaternion")
+    x, y, z, w = x / norm, y / norm, z / norm, w / norm
+    vx, vy, vz = vector
+    tx = 2.0 * (y * vz - z * vy)
+    ty = 2.0 * (z * vx - x * vz)
+    tz = 2.0 * (x * vy - y * vx)
+    return [
+        vx + w * tx + (y * tz - z * ty),
+        vy + w * ty + (z * tx - x * tz),
+        vz + w * tz + (x * ty - y * tx),
+    ]
+
+
+def relative_quaternion(current: list[float], anchor: list[float]) -> list[float]:
+    """Return the controller rotation since the clutch latch."""
+    return quaternion_multiply(quaternion_conjugate(anchor), current)
+
+
+def faucet_translation_velocity(
+    stick_horizontal: float,
+    stick_vertical: float,
+    relative_attitude: list[float],
+    speed: float,
+    vertical_input: float = 0.0,
+) -> list[float]:
+    """Map Joy-Con motion to TCP XYZ velocity in the arm-base frame.
+
+    At the clutch latch, stick-up is robot-forward (``-Y``), stick-right is
+    robot-right (``-X``), and the auxiliary input is up (``+Z``). Tilting the
+    hand rotates these three translation directions: the controller behaves
+    like a faucet/nozzle while the command remains an XYZ displacement.
+    """
+    nominal = [
+        -float(stick_horizontal),
+        -float(stick_vertical),
+        float(vertical_input),
+    ]
+    length = math.sqrt(sum(value * value for value in nominal))
+    if length > 1.0:
+        nominal = [value / length for value in nominal]
+    return [
+        speed * value
+        for value in quaternion_rotate_vector(relative_attitude, nominal)
+    ]
+
+
 def quaternion_slerp(start: list[float], goal: list[float], t: float) -> list[float]:
     """Spherical linear interpolation between XYZW quaternions."""
     dot = sum(a * b for a, b in zip(start, goal, strict=True))
@@ -42,8 +103,7 @@ def quaternion_slerp(start: list[float], goal: list[float], t: float) -> list[fl
     start_weight = math.sin((1.0 - t) * theta) / math.sin(theta)
     goal_weight = math.sin(t * theta) / math.sin(theta)
     return [
-        start_weight * a + goal_weight * b
-        for a, b in zip(start, goal, strict=True)
+        start_weight * a + goal_weight * b for a, b in zip(start, goal, strict=True)
     ]
 
 
@@ -84,9 +144,7 @@ def euler_delta_quaternion(roll: float, pitch: float, yaw: float) -> list[float]
 LEVEL_TCP_QUATERNION = [math.sqrt(0.5), -math.sqrt(0.5), 0.0, 0.0]
 
 
-def tcp_button_delta(
-    buttons: dict[str, bool], speed: float, dt: float
-) -> list[float]:
+def tcp_button_delta(buttons: dict[str, bool], speed: float, dt: float) -> list[float]:
     """Map face buttons to a TCP translation step in the {side}_Base frame.
 
     Both arm base frames are root-aligned (+x = robot left, -y = robot
@@ -102,8 +160,11 @@ def tcp_button_delta(
     shoulder = bool(buttons.get("shoulder"))
     forward = bool(buttons.get("up")) and not shoulder
     backward = bool(buttons.get("down")) and not shoulder
-    left = bool(buttons.get("left"))
-    right = bool(buttons.get("right"))
+    # A shoulder-modified face-button gesture is a distinct command.  Do not
+    # also emit the unmodified X displacement from left/right while shoulder
+    # is held (those combinations are currently intentionally unassigned).
+    left = bool(buttons.get("left")) and not shoulder
+    right = bool(buttons.get("right")) and not shoulder
     up = shoulder and bool(buttons.get("up"))
     down = shoulder and bool(buttons.get("down"))
     step = speed * dt
@@ -112,6 +173,32 @@ def tcp_button_delta(
         step * (float(backward) - float(forward)),
         step * (float(up) - float(down)),
     ]
+
+
+def lift_stick_requested(
+    buttons: dict[str, bool], stick_vertical: float, deadzone: float
+) -> bool:
+    """Reserve the left stick for lift only while L and the stick are active."""
+    clutch = bool(buttons.get("sl") or buttons.get("sr"))
+    return bool(
+        buttons.get("shoulder")
+        and not clutch
+        and abs(normalize_stick(stick_vertical, deadzone)) > 1.0e-9
+    )
+
+
+def next_lift_stick_latch(
+    latched: bool,
+    buttons: dict[str, bool],
+    stick_vertical: float,
+    deadzone: float,
+) -> bool:
+    """Keep one L+stick gesture in lift mode until the stick is centered."""
+    clutch = bool(buttons.get("sl") or buttons.get("sr"))
+    stick_active = abs(normalize_stick(stick_vertical, deadzone)) > 1.0e-9
+    if clutch or not stick_active:
+        return False
+    return bool(latched or buttons.get("shoulder"))
 
 
 def base_command(

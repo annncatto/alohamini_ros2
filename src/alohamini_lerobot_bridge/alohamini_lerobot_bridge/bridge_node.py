@@ -23,7 +23,6 @@ from std_srvs.srv import SetBool
 from trajectory_msgs.msg import JointTrajectoryPoint
 
 from .control import CommandComposer, TerminalState, TrajectorySample
-
 from .protocol import (
     BodyVelocity,
     JointMapper,
@@ -63,6 +62,10 @@ class AlohaMiniLeRobotBridge(Node):
             "require_model_match": True,
             "cmd_vel_topic": "/cmd_vel",
             "lift_jog_topic": "/lift_controller/joint_jog",
+            "left_arm_jog_topic": "/left_arm_controller/joint_jog",
+            "right_arm_jog_topic": "/right_arm_controller/joint_jog",
+            "arm_jog_timeout_sec": 0.15,
+            "max_arm_jog_displacement_rad": 0.10,
             "joint_states_topic": "/joint_states",
             "base_velocity_topic": "/alohamini/base_velocity",
             "base_frame": "base_link",
@@ -159,6 +162,7 @@ class AlohaMiniLeRobotBridge(Node):
         self.last_observation_error = ""
         self.observation_count = 0
         self.command_count = 0
+        self.last_disabled_arm_jog_warning = 0.0
         self.measured = BodyVelocity()
         self.wheel_positions = [0.0, 0.0, 0.0]
         self.last_integrate = time.monotonic()
@@ -188,6 +192,13 @@ class AlohaMiniLeRobotBridge(Node):
             self.on_lift_jog,
             10,
         )
+        for side in ("left", "right"):
+            self.create_subscription(
+                JointJog,
+                str(self.get_parameter(f"{side}_arm_jog_topic").value),
+                partial(self.on_arm_jog, side=side),
+                10,
+            )
         self.create_service(SetBool, "~/command_enable", self.on_command_enable)
         self.action_callback_group = ReentrantCallbackGroup()
         self.action_servers = []
@@ -307,6 +318,53 @@ class AlohaMiniLeRobotBridge(Node):
             )
         except ValueError as exc:
             self.get_logger().warning(f"Rejected lift JointJog: {exc}")
+
+    def on_arm_jog(self, message: JointJog, side: str) -> None:
+        if not self.command_gate.enabled:
+            now = time.monotonic()
+            if now - self.last_disabled_arm_jog_warning >= 1.0:
+                self.last_disabled_arm_jog_warning = now
+                self.get_logger().warning(
+                    f"Ignoring {side} arm JointJog: ROS command channel is disabled; "
+                    "call ~/command_enable first"
+                )
+            return
+        expected = [
+            f"{side}_{suffix}"
+            for suffix in (
+                "shoulder_pan",
+                "shoulder_lift",
+                "elbow_flex",
+                "wrist_flex",
+                "wrist_yaw_joint",
+                "wrist_roll",
+            )
+        ]
+        if list(message.joint_names) != expected or len(message.displacements) != 6:
+            self.get_logger().warning(
+                f"Rejected {side} arm JointJog: require six canonical joints and displacements"
+            )
+            return
+        limit = float(self.get_parameter("max_arm_jog_displacement_rad").value)
+        displacements = [float(value) for value in message.displacements]
+        if any(
+            not math.isfinite(value) or abs(value) > limit for value in displacements
+        ):
+            self.get_logger().warning(
+                f"Rejected {side} arm JointJog: displacement exceeds {limit:.3f} rad"
+            )
+            return
+        try:
+            self.composer.accept_arm_jog(
+                f"{side}_arm",
+                expected,
+                displacements,
+                self.latest_positions,
+                self.observation_fresh(),
+                float(self.get_parameter("arm_jog_timeout_sec").value),
+            )
+        except ValueError as exc:
+            self.get_logger().warning(f"Rejected {side} arm JointJog: {exc}")
 
     def on_command_enable(self, request: SetBool.Request, response: SetBool.Response):
         if request.data:
@@ -473,7 +531,13 @@ class AlohaMiniLeRobotBridge(Node):
             samples.append(
                 TrajectorySample(
                     float(duration.sec) + float(duration.nanosec) * 1e-9,
-                    dict(zip(names, (float(value) for value in point.positions))),
+                    dict(
+                        zip(
+                            names,
+                            (float(value) for value in point.positions),
+                            strict=True,
+                        )
+                    ),
                 )
             )
         return tuple(samples)
@@ -503,7 +567,9 @@ class AlohaMiniLeRobotBridge(Node):
 
     def on_trajectory_goal(self, goal, resource: str) -> GoalResponse:
         if not self.composer.enabled:
-            self.get_logger().warning(f"Rejected {resource} goal: commands are disabled")
+            self.get_logger().warning(
+                f"Rejected {resource} goal: commands are disabled"
+            )
             return GoalResponse.REJECT
         if not self.observation_fresh():
             self.get_logger().warning(f"Rejected {resource} goal: observation is stale")
@@ -525,7 +591,9 @@ class AlohaMiniLeRobotBridge(Node):
 
     def on_gripper_goal(self, goal, resource: str) -> GoalResponse:
         if not self.composer.enabled:
-            self.get_logger().warning(f"Rejected {resource} goal: commands are disabled")
+            self.get_logger().warning(
+                f"Rejected {resource} goal: commands are disabled"
+            )
             return GoalResponse.REJECT
         if not self.observation_fresh():
             self.get_logger().warning(f"Rejected {resource} goal: observation is stale")
@@ -536,7 +604,9 @@ class AlohaMiniLeRobotBridge(Node):
         position = float(goal.command.position)
         max_effort = float(goal.command.max_effort)
         if not math.isfinite(position):
-            self.get_logger().warning(f"Rejected {resource} goal: position is not finite")
+            self.get_logger().warning(
+                f"Rejected {resource} goal: position is not finite"
+            )
             return GoalResponse.REJECT
         if not math.isfinite(max_effort) or max_effort < 0.0:
             self.get_logger().warning(
@@ -553,9 +623,7 @@ class AlohaMiniLeRobotBridge(Node):
         try:
             if joint not in self.latest_positions:
                 raise ValueError(f"fresh measured state lacks {joint}")
-            self.mapper.urdf_to_lerobot(
-                joint, position, self.robot_metadata or {}
-            )
+            self.mapper.urdf_to_lerobot(joint, position, self.robot_metadata or {})
         except (KeyError, TypeError, ValueError) as error:
             self.get_logger().warning(f"Rejected {resource} goal: {error}")
             return GoalResponse.REJECT
@@ -598,7 +666,7 @@ class AlohaMiniLeRobotBridge(Node):
                         joint, position, self.robot_metadata or {}
                     )
                     preview[key] = round(value, 2)
-                self.get_logger().info(
+                self.get_logger().debug(
                     f"[{resource}] trajectory accepted; first sample maps to {preview}"
                 )
             goal_id = self.composer.start_trajectory(
@@ -629,9 +697,13 @@ class AlohaMiniLeRobotBridge(Node):
             event = controller.terminal(goal_id)
             if event is not None:
                 result.error_string = event.message
-                self.get_logger().info(
-                    f"[{resource}] trajectory terminal: {event.state.name} "
-                    f"{event.message or ''}"
+                terminal_log = (
+                    self.get_logger().debug
+                    if event.state is TerminalState.PREEMPTED
+                    else self.get_logger().info
+                )
+                terminal_log(
+                    f"[{resource}] trajectory terminal: {event.state.name} {event.message or ''}"
                 )
                 if event.state is TerminalState.SUCCEEDED:
                     goal_handle.succeed()
@@ -717,7 +789,9 @@ class AlohaMiniLeRobotBridge(Node):
                 elif event.state is TerminalState.CANCELED:
                     goal_handle.canceled()
                 else:
-                    self.get_logger().warning(f"{resource} command failed: {event.message}")
+                    self.get_logger().warning(
+                        f"{resource} command failed: {event.message}"
+                    )
                     goal_handle.abort()
                 return result
             if self.observation_fresh():
@@ -767,9 +841,7 @@ class AlohaMiniLeRobotBridge(Node):
                 key="lift_command_ready",
                 value=str(self.lift_ready_for_commands()).lower(),
             ),
-            KeyValue(
-                key="command_enabled", value=str(self.composer.enabled).lower()
-            ),
+            KeyValue(key="command_enabled", value=str(self.composer.enabled).lower()),
             KeyValue(
                 key="command_stream_started",
                 value=str(self.composer.ever_commanded).lower(),

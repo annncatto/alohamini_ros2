@@ -1,5 +1,4 @@
 import pytest
-
 from alohamini_lerobot_bridge.control import (
     LEFT_ARM_JOINTS,
     CommandComposer,
@@ -72,7 +71,7 @@ def _composer():
 
 def _measured():
     return {
-        **{joint: 0.0 for joint in LEFT_ARM_JOINTS},
+        **dict.fromkeys(LEFT_ARM_JOINTS, 0.0),
         **{joint.replace("left_", "right_", 1): 0.0 for joint in LEFT_ARM_JOINTS},
         "left_gripper": 0.32,
         "right_gripper": 0.32,
@@ -90,6 +89,43 @@ def test_inactive_resources_emit_no_default_joint_targets():
     assert action == {"x.vel": 0.1, "y.vel": 0.0, "theta.vel": 0.0}
     assert not any(key.endswith(".pos") for key in action)
     assert "lift_axis.height_mm" not in action
+
+
+def test_arm_joint_jog_is_latest_only_and_expires_without_action_churn():
+    composer = _composer()
+    composer.enable()
+    measured = _measured()
+    displacements = [0.01, -0.02, 0.03, 0.0, 0.0, -0.01]
+
+    composer.accept_arm_jog(
+        "left_arm",
+        LEFT_ARM_JOINTS,
+        displacements,
+        measured,
+        True,
+        timeout=0.15,
+        now=1.0,
+    )
+    action = composer.compose(measured, _metadata(), True, now=1.05)
+
+    for joint, displacement in zip(LEFT_ARM_JOINTS, displacements, strict=True):
+        key, expected = composer.mapper.urdf_to_lerobot(joint, measured[joint] + displacement, _metadata())
+        assert action[key] == pytest.approx(expected)
+    assert composer.resources["left_arm"].active_goal_id is None
+    assert composer.compose(measured, _metadata(), True, now=1.16) is None
+
+
+def test_arm_joint_jog_rejects_noncanonical_or_stale_input():
+    composer = _composer()
+    composer.enable()
+    with pytest.raises(ValueError, match="canonical order"):
+        composer.accept_arm_jog(
+            "left_arm", reversed(LEFT_ARM_JOINTS), [0.0] * 6, _measured(), True, timeout=0.15, now=1.0
+        )
+    with pytest.raises(ValueError, match="fresh Host observation"):
+        composer.accept_arm_jog(
+            "left_arm", LEFT_ARM_JOINTS, [0.0] * 6, _measured(), False, timeout=0.15, now=1.0
+        )
 
 
 def test_lift_jog_tracks_fresh_measurement_with_verified_lookahead():
@@ -176,9 +212,7 @@ def test_partial_arm_goal_latches_unspecified_joints_from_fresh_measurement():
 
     arm_keys = {key for key in action if key.startswith("arm_left_")}
     assert len(arm_keys) == len(LEFT_ARM_JOINTS)
-    roll_key, roll_value = composer.mapper.urdf_to_lerobot(
-        "left_wrist_roll", 0.42, _metadata()
-    )
+    roll_key, roll_value = composer.mapper.urdf_to_lerobot("left_wrist_roll", 0.42, _metadata())
     assert action[roll_key] == pytest.approx(roll_value)
     assert not any(key.startswith("arm_right_") for key in action)
     assert {key: action[key] for key in ("x.vel", "y.vel", "theta.vel")} == {
@@ -250,10 +284,9 @@ def test_preempt_terminates_old_goal_and_new_goal_latches_current_state():
     assert second != first
     event = composer.resources["left_arm"].terminal(first)
     assert event is not None and event.state is TerminalState.PREEMPTED
+    assert composer.resources["left_arm"].terminal(first) is None
     action = composer.compose(measured, _metadata(), True, now=1.2)
-    key, expected = composer.mapper.urdf_to_lerobot(
-        "left_wrist_roll", 0.3, _metadata()
-    )
+    key, expected = composer.mapper.urdf_to_lerobot("left_wrist_roll", 0.3, _metadata())
     assert action[key] == pytest.approx(expected)
 
 
@@ -306,10 +339,7 @@ def test_left_gripper_is_independent_and_does_not_activate_arm_or_right_gripper(
     action = composer.compose(measured, _metadata(), True, now=0.5)
 
     assert "arm_left_gripper.pos" in action
-    assert not any(
-        key.startswith("arm_left_") and key != "arm_left_gripper.pos"
-        for key in action
-    )
+    assert not any(key.startswith("arm_left_") and key != "arm_left_gripper.pos" for key in action)
     assert not any(key.startswith("arm_right_") for key in action)
 
 
@@ -325,9 +355,7 @@ def test_stale_gripper_feedback_stops_generating_gripper_targets():
         True,
         now=0.0,
     )
-    assert "arm_right_gripper.pos" in composer.compose(
-        measured, _metadata(), True, now=0.2
-    )
+    assert "arm_right_gripper.pos" in composer.compose(measured, _metadata(), True, now=0.2)
 
     first = composer.compose(measured, _metadata(), False, now=0.3)
     second = composer.compose(measured, _metadata(), False, now=0.4)
@@ -356,9 +384,7 @@ def test_tracking_error_aborts_and_holds_latest_measurement_not_old_target():
 
     event = composer.resources["left_arm"].terminal(goal_id)
     assert event is not None and event.state is TerminalState.ABORTED
-    key, expected = composer.mapper.urdf_to_lerobot(
-        "left_shoulder_pan", -0.5, _metadata()
-    )
+    key, expected = composer.mapper.urdf_to_lerobot("left_shoulder_pan", -0.5, _metadata())
     assert action[key] == pytest.approx(expected)
 
 
@@ -507,17 +533,15 @@ def test_lift_hold_persists_indefinitely_after_goal_success():
     # The measured lift tracks the streamed command (30 Hz cadence).
     for tick in (index * 0.05 for index in range(1, 23)):
         action = composer.compose(measured, _metadata(), True, now=tick)
-        measured["vertical_move"] = composer.mapper.lift_height_to_urdf(
-            action["lift_axis.height_mm"]
-        )
+        measured["vertical_move"] = composer.mapper.lift_height_to_urdf(action["lift_axis.height_mm"])
     # Long after the goal ended the velocity-mode lift must keep being
     # commanded at the held height so the Host holds the axis (self-lock).
     for tick in (2.0, 10.0, 3600.0):
         action = composer.compose(measured, _metadata(), True, now=tick)
         assert action is not None
-        assert composer.mapper.lift_height_to_urdf(
-            action["lift_axis.height_mm"]
-        ) == pytest.approx(-0.15, abs=1e-6)
+        assert composer.mapper.lift_height_to_urdf(action["lift_axis.height_mm"]) == pytest.approx(
+            -0.15, abs=1e-6
+        )
 
 
 def test_lift_hold_is_preempted_by_a_new_goal():
@@ -535,9 +559,7 @@ def test_lift_hold_is_preempted_by_a_new_goal():
     )
     for tick in (0.05, 0.1, 0.15, 0.2, 0.25):
         action = composer.compose(measured, _metadata(), True, now=tick)
-        measured["vertical_move"] = composer.mapper.lift_height_to_urdf(
-            action["lift_axis.height_mm"]
-        )
+        measured["vertical_move"] = composer.mapper.lift_height_to_urdf(action["lift_axis.height_mm"])
     composer.start_trajectory(
         "lift",
         ["vertical_move"],
@@ -548,6 +570,4 @@ def test_lift_hold_is_preempted_by_a_new_goal():
     )
     action = composer.compose(measured, _metadata(), True, now=1.05)
     assert action is not None
-    assert composer.mapper.lift_height_to_urdf(
-        action["lift_axis.height_mm"]
-    ) < -0.15
+    assert composer.mapper.lift_height_to_urdf(action["lift_axis.height_mm"]) < -0.15
