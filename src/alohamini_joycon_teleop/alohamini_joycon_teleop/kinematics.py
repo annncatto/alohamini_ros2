@@ -18,6 +18,15 @@ ARM_SUFFIXES = (
 )
 
 
+def _scale_to_max_abs(values: np.ndarray, limit: float) -> np.ndarray:
+    """Bound a vector without changing its direction."""
+    limit = max(0.0, float(limit))
+    peak = float(np.max(np.abs(values))) if values.size else 0.0
+    if peak <= limit or peak <= 1.0e-12:
+        return values
+    return values * (limit / peak)
+
+
 def _rotation_vector(matrix: np.ndarray) -> np.ndarray:
     """Return the shortest rotation vector for a 3x3 rotation matrix."""
     cosine = float(np.clip((np.trace(matrix) - 1.0) * 0.5, -1.0, 1.0))
@@ -281,8 +290,14 @@ class AlohaMiniArmKinematics:
             weighted_jacobian @ weighted_jacobian.T + regularizer,
             twist,
         )
-        velocity = np.clip(velocity, -max_joint_velocity, max_joint_velocity)
-        delta = np.clip(velocity * max(0.0, float(dt)), -max_joint_step, max_joint_step)
+        # Scale the complete DLS vector instead of clipping joints
+        # independently. Component-wise saturation changes the joint-space
+        # direction whenever a different joint reaches the bound, which shows
+        # up as a small Cartesian kink during continuous teleoperation.
+        velocity = _scale_to_max_abs(velocity, max_joint_velocity)
+        delta = _scale_to_max_abs(
+            velocity * max(0.0, float(dt)), max_joint_step
+        )
         candidate = joints + delta
         joint_limit_hits: list[int] = []
         if self.joint_limits is not None:

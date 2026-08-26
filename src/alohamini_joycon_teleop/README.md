@@ -81,7 +81,14 @@ stick returns to its deadzone; it cannot leak into base translation mid-gesture.
 Hardware mode keeps the input and IK loop at 30 Hz while using a bounded 200 ms
 joint-position look-ahead. This overcomes servo friction/backlash without
 removing the Bridge tracking gate or Host trajectory shaping. Preview mode uses
-the real timer step because simulated joints have no lag.
+the real timer step because simulated joints have no lag. Velocity and position
+bounds scale the complete DLS joint vector, preserving its direction instead of
+independently clipping joints and introducing Cartesian kinks.
+
+The default face-button and faucet Cartesian speed is 0.04 m/s and relative
+orientation speed is 1.0 rad/s. Tune `tcp_speed_m_s` and
+`orientation_speed_rad_s` independently without changing the bounded DLS/Host
+safety layers.
 
 ## Raw input record and deterministic replay
 

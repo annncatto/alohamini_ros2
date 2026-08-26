@@ -3,7 +3,10 @@ from pathlib import Path
 import numpy as np
 import pytest
 import yaml
-from alohamini_joycon_teleop.kinematics import AlohaMiniArmKinematics
+from alohamini_joycon_teleop.kinematics import (
+    AlohaMiniArmKinematics,
+    _scale_to_max_abs,
+)
 from ament_index_python.packages import get_package_share_directory
 
 
@@ -43,6 +46,12 @@ def test_differential_ik_is_bounded(kinematics):
     target[:3, 3] += 1.0
     candidate, _ = kinematics.step(joints, target, 1.0, max_joint_step=0.03)
     assert np.max(np.abs(candidate - joints)) <= 0.03 + 1.0e-12
+
+
+def test_dls_vector_bound_preserves_joint_ratios():
+    original = np.array([0.20, -0.10, 0.05, 0.0])
+    bounded = _scale_to_max_abs(original, 0.08)
+    assert bounded == pytest.approx([0.08, -0.04, 0.02, 0.0])
 
 
 def test_joint_limit_margin_blocks_only_outward_motion(kinematics):

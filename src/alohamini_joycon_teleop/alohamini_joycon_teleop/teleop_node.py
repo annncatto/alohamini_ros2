@@ -125,7 +125,7 @@ class JoyConTeleop(Node):
             "arm_control_mode": "differential",
             "ik_timeout_sec": 0.3,
             "deadzone": 0.25,
-            "tcp_speed_m_s": 0.03,
+            "tcp_speed_m_s": 0.04,
             "orientation_scale": 1.0,
             "orientation_deadband_rad": 0.02,
             # Per-axis signs of the Joy-Con attitude increments applied to the
@@ -133,7 +133,7 @@ class JoyConTeleop(Node):
             # opposite direction to the gripper, so roll is negated.
             "orientation_axis_signs": [-1.0, 1.0, -1.0],
             "max_orientation_delta_rad": 1.2,
-            "orientation_speed_rad_s": 0.8,
+            "orientation_speed_rad_s": 1.0,
             "imu_latch_reference": "current",
             "preview_home": "installed",
             "max_joint_step_rad": 0.10,
