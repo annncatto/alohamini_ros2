@@ -25,8 +25,9 @@ source ~/alohamini_ros2/install/setup.bash
 # No robot commands.
 ros2 launch alohamini_joycon_teleop preview.launch.py
 
-# Starts the bridge read-only. Replace ROBOT_IP with the Pi address.
-ros2 launch alohamini_joycon_teleop hardware.launch.py host:=ROBOT_IP
+# Unified hardware graph. Replace ROBOT_IP with the Pi address.
+ros2 launch alohamini_bringup hardware.launch.py host:=ROBOT_IP \
+  enable_moveit:=true enable_joycon:=true use_rviz:=true
 ```
 
 Hardware commands stay disabled by default. After checking the measured pose,

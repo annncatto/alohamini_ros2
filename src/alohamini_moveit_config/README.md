@@ -22,13 +22,14 @@ independent physical safety limits.
 
 ## Hardware execution through the verified LeRobot Host
 
-`hardware_execution.launch.py` keeps `/joint_states` bound to measured Host
-feedback and connects MoveIt's existing `FollowJointTrajectory` controller
-definitions to `alohamini_lerobot_bridge`.  It does not start a fake joint-state
-publisher, and the bridge still starts with commands disabled.
+`move_group.launch.py` is a component: it consumes measured `/joint_states` and
+the standard `FollowJointTrajectory` and `GripperCommand` actions, but never
+starts a Bridge or `robot_state_publisher`. `alohamini_bringup` owns the
+complete hardware composition and still starts with commands disabled.
 
 ```bash
-ros2 launch alohamini_moveit_config hardware_execution.launch.py host:=ROBOT_IP
+ros2 launch alohamini_bringup hardware.launch.py host:=ROBOT_IP \
+  enable_moveit:=true use_rviz:=true
 ```
 
 After confirming that the robot model follows fresh measured state and that all

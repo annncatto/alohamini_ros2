@@ -1,5 +1,11 @@
 # alohamini_lerobot_bridge
 
+For a complete physical graph, use `alohamini_bringup hardware.launch.py`.
+`bridge.launch.py` is the transport-only component. The older
+`runtime.launch.py` remains available for the core state/camera graph, but new
+MoveIt, Joy-Con and perception compositions should use Bringup so only one
+Bridge and one `robot_state_publisher` exist.
+
 ROS 2 state and command integration for the physical runtime hosted by
 `lerobot_alohamini`. This package never opens a serial device. The LeRobot Host
 remains the only owner of both motor buses and its watchdog remains the final

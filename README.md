@@ -29,8 +29,8 @@ without writing changes back into the authoritative description. See
 ## Current scope
 
 The core packages are `alohamini_description`, `alohamini_calibration`,
-`alohamini_moveit_config`, `alohamini_lerobot_bridge`, and
-`alohamini_joycon_teleop`. They establish one upstream location for the
+`alohamini_camera`, `alohamini_moveit_config`, `alohamini_lerobot_bridge`,
+`alohamini_joycon_teleop`, and `alohamini_bringup`. They establish one upstream location for the
 CAD-derived whole-robot model, calibration assets, mesh assets, MoveIt
 semantics, guarded physical interfaces, and Joy-Con teleoperation.
 `~/alohamini_lidar_imu` remains the source of the ROS bridge and an alternative
@@ -53,8 +53,12 @@ ros2 launch alohamini_description description.launch.py
 ros2 launch alohamini_moveit_config plan_only.launch.py
 ros2 launch alohamini_joycon_teleop preview.launch.py
 
-# Shared physical runtime state bridge; read-only by default:
-ros2 launch alohamini_lerobot_bridge runtime.launch.py host:=127.0.0.1
+# Unified physical runtime, TF and cameras; commands remain disabled by default:
+ros2 launch alohamini_bringup hardware.launch.py host:=127.0.0.1
+
+# Add MoveIt and Joy-Con without starting another Bridge or state publisher:
+ros2 launch alohamini_bringup hardware.launch.py host:=127.0.0.1 \
+  enable_moveit:=true enable_joycon:=true use_rviz:=true
 ```
 
 Offline validation:
