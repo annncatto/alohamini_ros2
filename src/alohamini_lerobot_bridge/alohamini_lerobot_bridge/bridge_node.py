@@ -13,6 +13,7 @@ from control_msgs.action import FollowJointTrajectory, GripperCommand
 from control_msgs.msg import JointJog
 from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus, KeyValue
 from geometry_msgs.msg import Twist, TwistStamped
+from builtin_interfaces.msg import Time as TimeMsg
 from rclpy.action import ActionServer, CancelResponse, GoalResponse
 from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.executors import ExternalShutdownException, MultiThreadedExecutor
@@ -45,7 +46,7 @@ class AlohaMiniLeRobotBridge(Node):
             "command_port": 5555,
             "observation_port": 5556,
             "request_window": 3,
-            "rate_hz": 30.0,
+            "rate_hz": 50.0,
             "observation_timeout_sec": 0.5,
             "request_timeout_sec": 1.0,
             "command_timeout_sec": 0.5,
@@ -82,6 +83,8 @@ class AlohaMiniLeRobotBridge(Node):
             "wheel_radius": 0.063,
             "base_radius": 0.195,
             "arm_mapping_dir": "",
+            "state_timestamp_mode": "host_wall",
+            "max_clock_offset_ms": 250.0,
         }
         for name, value in defaults.items():
             self.declare_parameter(name, value)
@@ -160,6 +163,7 @@ class AlohaMiniLeRobotBridge(Node):
         self.malformed_responses = 0
         self.invalid_observations = 0
         self.last_observation_error = ""
+        self.last_state_clock_offset_ms = math.nan
         self.observation_count = 0
         self.command_count = 0
         self.last_disabled_arm_jog_warning = 0.0
@@ -347,13 +351,19 @@ class AlohaMiniLeRobotBridge(Node):
             return
         limit = float(self.get_parameter("max_arm_jog_displacement_rad").value)
         displacements = [float(value) for value in message.displacements]
+        tolerance = 1.0e-9
         if any(
-            not math.isfinite(value) or abs(value) > limit for value in displacements
+            not math.isfinite(value) or abs(value) > limit + tolerance
+            for value in displacements
         ):
             self.get_logger().warning(
                 f"Rejected {side} arm JointJog: displacement exceeds {limit:.3f} rad"
             )
             return
+        # DLS scaling can produce a value a few ulps above the configured boundary.
+        # Accept only that numerical roundoff, then restore the exact Bridge bound
+        # before composing the command.
+        displacements = [max(-limit, min(limit, value)) for value in displacements]
         try:
             self.composer.accept_arm_jog(
                 f"{side}_arm",
@@ -448,8 +458,9 @@ class AlohaMiniLeRobotBridge(Node):
             yaw=math.radians(host_velocity.yaw)
             / float(self.get_parameter("angular_z_scale").value),
         )
+        stamp = self.observation_stamp(observation)
         measured = TwistStamped()
-        measured.header.stamp = self.get_clock().now().to_msg()
+        measured.header.stamp = stamp
         measured.header.frame_id = self.base_frame
         measured.twist.linear.x = self.measured.x
         measured.twist.linear.y = self.measured.y
@@ -459,11 +470,32 @@ class AlohaMiniLeRobotBridge(Node):
             String(data=json.dumps(observation, separators=(",", ":")))
         )
         message = JointState()
-        message.header.stamp = self.get_clock().now().to_msg()
+        message.header.stamp = stamp
         message.name = list(positions)
         message.position = list(positions.values())
         self.joint_pub.publish(message)
         self.measured_joint_pub.publish(message)
+
+    def observation_stamp(self, observation: dict) -> TimeMsg:
+        mode = str(self.get_parameter("state_timestamp_mode").value)
+        if mode == "receipt":
+            self.last_state_clock_offset_ms = math.nan
+            return self.get_clock().now().to_msg()
+        if mode != "host_wall":
+            raise ValueError("state_timestamp_mode must be host_wall or receipt")
+        timing = observation.get("_host_timing")
+        unix_ns = timing.get("state_sample_unix_ns") if isinstance(timing, dict) else None
+        if isinstance(unix_ns, bool) or not isinstance(unix_ns, (int, float)):
+            self.last_state_clock_offset_ms = math.nan
+            self.get_logger().warning(
+                "Host observation lacks state_sample_unix_ns; using receipt time"
+            )
+            return self.get_clock().now().to_msg()
+        unix_ns = int(unix_ns)
+        if unix_ns <= 0:
+            raise ValueError("Host state_sample_unix_ns must be positive")
+        self.last_state_clock_offset_ms = (time.time_ns() - unix_ns) / 1e6
+        return TimeMsg(sec=unix_ns // 1_000_000_000, nanosec=unix_ns % 1_000_000_000)
 
     def publish_wheel_states(self) -> None:
         now_mono = time.monotonic()
@@ -820,6 +852,11 @@ class AlohaMiniLeRobotBridge(Node):
         elif self.require_model_match and not self.model_matches():
             status.level = DiagnosticStatus.ERROR
             status.message = "Host robot model mismatch"
+        elif math.isfinite(self.last_state_clock_offset_ms) and abs(
+            self.last_state_clock_offset_ms
+        ) > float(self.get_parameter("max_clock_offset_ms").value):
+            status.level = DiagnosticStatus.WARN
+            status.message = "Host/ROS clock offset or state transport latency too large"
         elif not self.lift_ready_for_commands():
             status.level = DiagnosticStatus.WARN
             status.message = "Lift is not command-ready"
@@ -860,6 +897,10 @@ class AlohaMiniLeRobotBridge(Node):
             KeyValue(key="pending_requests", value=str(len(self.transport.pending))),
             KeyValue(key="expired_requests", value=str(self.request_expirations)),
             KeyValue(key="malformed_responses", value=str(self.malformed_responses)),
+            KeyValue(
+                key="state_clock_offset_ms",
+                value=f"{self.last_state_clock_offset_ms:.3f}",
+            ),
         ]
         array = DiagnosticArray()
         array.header.stamp = self.get_clock().now().to_msg()

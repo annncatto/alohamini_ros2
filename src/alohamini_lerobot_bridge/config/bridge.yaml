@@ -4,7 +4,7 @@ alohamini_lerobot_bridge:
     command_port: 5555
     observation_port: 5556
     request_window: 3
-    rate_hz: 30.0
+    rate_hz: 50.0
     observation_timeout_sec: 0.5
     request_timeout_sec: 1.0
     command_timeout_sec: 0.5
@@ -47,3 +47,7 @@ alohamini_lerobot_bridge:
     # Empty uses the packaged authoritative mapping. Set to a reviewed
     # machine-profile directory containing hardware_joint_map_{left,right}.yaml.
     arm_mapping_dir: ""
+    # Host capture stamps are required for camera/TF hand-eye synchronization.
+    # Pi and ROS PC clocks should be synchronized with chrony/NTP.
+    state_timestamp_mode: host_wall
+    max_clock_offset_ms: 250.0

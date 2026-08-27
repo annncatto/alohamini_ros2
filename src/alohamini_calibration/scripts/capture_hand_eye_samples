@@ -1,0 +1,168 @@
+#!/usr/bin/python3
+"""Capture timestamp-matched images and TF poses without commanding the robot."""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import math
+import time
+from datetime import datetime, timezone
+from pathlib import Path
+
+import rclpy
+import yaml
+from rclpy.duration import Duration
+from rclpy.node import Node
+from rclpy.qos import HistoryPolicy, QoSProfile, ReliabilityPolicy
+from rclpy.time import Time
+from sensor_msgs.msg import CompressedImage
+from tf2_ros import Buffer, TransformListener
+
+
+def quaternion_angle(a: list[float], b: list[float]) -> float:
+    dot = abs(sum(x * y for x, y in zip(a, b, strict=True)))
+    return 2.0 * math.acos(min(1.0, max(-1.0, dot)))
+
+
+def transform_document(transform) -> dict:
+    translation = transform.transform.translation
+    rotation = transform.transform.rotation
+    return {
+        "translation_m": [float(translation.x), float(translation.y), float(translation.z)],
+        "quaternion_xyzw": [
+            float(rotation.x),
+            float(rotation.y),
+            float(rotation.z),
+            float(rotation.w),
+        ],
+    }
+
+
+class HandEyeCapture(Node):
+    def __init__(self, args) -> None:
+        super().__init__("alohamini_hand_eye_capture")
+        self.args = args
+        self.buffer = Buffer()
+        self.listener = TransformListener(self.buffer, self)
+        self.samples = []
+        self.last_message_monotonic = time.monotonic()
+        qos = QoSProfile(
+            depth=2,
+            reliability=ReliabilityPolicy.BEST_EFFORT,
+            history=HistoryPolicy.KEEP_LAST,
+        )
+        self.subscription = self.create_subscription(
+            CompressedImage, args.image_topic, self.on_image, qos
+        )
+
+    def on_image(self, message: CompressedImage) -> None:
+        self.last_message_monotonic = time.monotonic()
+        if len(self.samples) >= self.args.count:
+            return
+        if message.header.stamp.sec == 0 and message.header.stamp.nanosec == 0:
+            self.get_logger().warning("Rejected image with zero timestamp")
+            return
+        stamp = Time.from_msg(message.header.stamp)
+        try:
+            base_from_gripper = self.buffer.lookup_transform(
+                self.args.base_frame,
+                self.args.gripper_frame,
+                stamp,
+                timeout=Duration(seconds=0.05),
+            )
+            base_from_mount = self.buffer.lookup_transform(
+                self.args.base_frame,
+                self.args.mount_link,
+                stamp,
+                timeout=Duration(seconds=0.05),
+            )
+        except Exception as error:
+            self.get_logger().warning(f"No timestamp-matched TF: {error}")
+            return
+        gripper = transform_document(base_from_gripper)
+        if self.samples:
+            position = gripper["translation_m"]
+            quaternion = gripper["quaternion_xyzw"]
+            diverse = all(
+                math.dist(position, sample["T_base_from_gripper"]["translation_m"])
+                >= self.args.min_translation_m
+                or quaternion_angle(
+                    quaternion,
+                    sample["T_base_from_gripper"]["quaternion_xyzw"],
+                )
+                >= math.radians(self.args.min_rotation_deg)
+                for sample in self.samples
+            )
+            if not diverse:
+                return
+        index = len(self.samples)
+        filename = f"{self.args.camera}_{index:04d}.jpg"
+        jpeg = bytes(message.data)
+        (self.args.output / filename).write_bytes(jpeg)
+        self.samples.append(
+            {
+                "file": filename,
+                "sha256": hashlib.sha256(jpeg).hexdigest(),
+                "capture_unix_ns": int(message.header.stamp.sec) * 1_000_000_000
+                + int(message.header.stamp.nanosec),
+                "T_base_from_gripper": gripper,
+                "T_base_from_mount": transform_document(base_from_mount),
+            }
+        )
+        self.get_logger().info(f"Captured {index + 1}/{self.args.count}: {filename}")
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--camera", required=True)
+    parser.add_argument(
+        "--calibration-type",
+        choices=("eye_in_hand", "eye_to_hand"),
+        default="eye_in_hand",
+    )
+    parser.add_argument("--image-topic", required=True)
+    parser.add_argument("--base-frame", default="base_link")
+    parser.add_argument("--gripper-frame", required=True)
+    parser.add_argument("--mount-link", required=True)
+    parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--count", type=int, default=25)
+    parser.add_argument("--min-translation-m", type=float, default=0.015)
+    parser.add_argument("--min-rotation-deg", type=float, default=8.0)
+    parser.add_argument("--timeout-sec", type=float, default=10.0)
+    args = parser.parse_args()
+    if args.count < 3 or args.min_translation_m < 0.0 or args.min_rotation_deg < 0.0:
+        raise ValueError("invalid hand-eye capture thresholds")
+    args.output.mkdir(parents=True, exist_ok=True)
+    rclpy.init()
+    node = HandEyeCapture(args)
+    try:
+        while rclpy.ok() and len(node.samples) < args.count:
+            rclpy.spin_once(node, timeout_sec=0.1)
+            if time.monotonic() - node.last_message_monotonic > args.timeout_sec:
+                raise TimeoutError("timed out waiting for camera images")
+    finally:
+        del node.listener
+        node.destroy_node()
+        rclpy.shutdown()
+    manifest = {
+        "schema_version": 1,
+        "status": "raw_hand_eye_capture",
+        "calibration_type": args.calibration_type,
+        "captured_at": datetime.now(timezone.utc).isoformat(),
+        "camera_name": args.camera,
+        "image_topic": args.image_topic,
+        "base_frame": args.base_frame,
+        "gripper_frame": args.gripper_frame,
+        "mount_link": args.mount_link,
+        "timestamp_requirement": "host_capture_time_with_synchronized_clocks",
+        "samples": node.samples,
+    }
+    (args.output / "manifest.yaml").write_text(
+        yaml.safe_dump(manifest, sort_keys=False), encoding="utf-8"
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -100,7 +100,12 @@ class ArmControl:
     fault_latched: bool = False
     relatch_was_pressed: bool = False
     trigger_was_pressed: bool = False
+    trigger_release_started: float | None = None
     last_gripper_toggle: float = -1.0e9
+    # None means no command has been issued in this process yet. After the first
+    # command, toggling follows accepted command state instead of measured travel:
+    # a loaded/stalled gripper must still reverse on the next press.
+    gripper_open_commanded: bool | None = None
     rejection_streak: int = 0
     hand_anchor_orientation: list[float] | None = None
     tcp_anchor_orientation: list[float] | None = None
@@ -120,12 +125,12 @@ class JoyConTeleop(Node):
             "input_endpoint": "tcp://127.0.0.1:5567",
             "input_timeout_sec": 0.25,
             "measured_state_timeout_sec": 0.25,
-            "control_rate_hz": 30.0,
+            "control_rate_hz": 50.0,
             "ik_rate_hz": 20.0,
             "arm_control_mode": "differential",
             "ik_timeout_sec": 0.3,
             "deadzone": 0.25,
-            "tcp_speed_m_s": 0.04,
+            "tcp_speed_m_s": 0.15,
             "orientation_scale": 1.0,
             "orientation_deadband_rad": 0.02,
             # Per-axis signs of the Joy-Con attitude increments applied to the
@@ -133,7 +138,7 @@ class JoyConTeleop(Node):
             # opposite direction to the gripper, so roll is negated.
             "orientation_axis_signs": [-1.0, 1.0, -1.0],
             "max_orientation_delta_rad": 1.2,
-            "orientation_speed_rad_s": 1.0,
+            "orientation_speed_rad_s": 2.0,
             "imu_latch_reference": "current",
             "preview_home": "installed",
             "max_joint_step_rad": 0.10,
@@ -144,9 +149,9 @@ class JoyConTeleop(Node):
             "dls_orientation_weight": 0.35,
             "dls_damping": 0.04,
             "dls_max_joint_velocity_rad_s": 1.5,
-            "dls_max_joint_step_rad": 0.08,
-            "dls_command_horizon_sec": 0.20,
-            "dls_max_target_error_m": 0.04,
+            "dls_max_joint_step_rad": 0.10,
+            "dls_command_horizon_sec": 0.12,
+            "dls_max_target_error_m": 0.025,
             "dls_joint_limit_margin_rad": 0.03,
             "avoid_collisions": True,
             "arm_trajectory_duration_sec": 0.08,
@@ -938,7 +943,8 @@ class JoyConTeleop(Node):
         target[:3, 3] = proposed["position"]
         target[:3, :3] = quaternion_to_matrix(proposed["orientation"])
         solve_started = time.perf_counter()
-        # The control timer stays at 30 Hz, but a slightly longer position
+        # The control timer stays at the configured realtime rate, but a
+        # slightly longer position
         # look-ahead prevents every command from collapsing to a few servo
         # ticks when Bridge anchors JointJog displacements at fresh feedback.
         # Preview needs no such look-ahead because its joint state accepts the
@@ -1012,7 +1018,8 @@ class JoyConTeleop(Node):
         if now - self.last_ik_ok.get(side, 0.0) >= 1.0:
             self.last_ik_ok[side] = now
             self.get_logger().info(
-                f"[{side}] DLS 30 Hz: xyz_err={metrics['position_error_m']:.4f}m "
+                f"[{side}] DLS {float(self.get_parameter('control_rate_hz').value):g} Hz: "
+                f"xyz_err={metrics['position_error_m']:.4f}m "
                 f"rot_err={metrics['orientation_error_rad']:.3f}rad "
                 f"sigma_min={metrics['minimum_singular_value']:.4f} "
                 f"step={metrics['max_joint_step_rad']:.4f}rad "
@@ -1169,22 +1176,43 @@ class JoyConTeleop(Node):
             )
 
     def update_gripper_button(self, side: str, pressed: bool, now: float) -> None:
-        """Toggle once per debounced trigger press, identically on both sides."""
+        """Toggle once, then require a confirmed release before re-arming."""
         arm = self.arms[side]
-        rising_edge = pressed and not arm.trigger_was_pressed
-        arm.trigger_was_pressed = pressed
+        release_grace = float(
+            self.get_parameter("button_release_grace_sec").value
+        )
         debounce = float(self.get_parameter("gripper_button_debounce_sec").value)
-        if rising_edge and now - arm.last_gripper_toggle >= debounce:
-            arm.last_gripper_toggle = now
-            self.toggle_gripper(side)
+        if pressed:
+            arm.trigger_release_started = None
+            if not arm.trigger_was_pressed:
+                arm.trigger_was_pressed = True
+                if now - arm.last_gripper_toggle >= debounce:
+                    arm.last_gripper_toggle = now
+                    self.toggle_gripper(side)
+            return
+        if not arm.trigger_was_pressed:
+            arm.trigger_release_started = None
+            return
+        if arm.trigger_release_started is None:
+            arm.trigger_release_started = now
+            return
+        if now - arm.trigger_release_started >= release_grace:
+            arm.trigger_was_pressed = False
+            arm.trigger_release_started = None
 
     def toggle_gripper(self, side: str) -> None:
         name = f"{side}_gripper"
         closed = 0.32
         opened = -1.8030294104
-        target = opened if self.positions.get(name, closed) > -0.7 else closed
+        arm = self.arms[side]
+        was_open_commanded = arm.gripper_open_commanded
+        if was_open_commanded is None:
+            was_open_commanded = self.positions.get(name, closed) <= -0.7
+        open_commanded = not was_open_commanded
+        target = opened if open_commanded else closed
         if not self.hardware_mode:
             self.positions[name] = target
+            arm.gripper_open_commanded = open_commanded
             return
         client = self.gripper_clients[side]
         if not client.server_is_ready():
@@ -1193,6 +1221,7 @@ class JoyConTeleop(Node):
         goal.command.position = target
         goal.command.max_effort = 0.0
         client.send_goal_async(goal)
+        arm.gripper_open_commanded = open_commanded
 
     def update_base(
         self,

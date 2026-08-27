@@ -530,7 +530,7 @@ def test_lift_hold_persists_indefinitely_after_goal_success():
         True,
         now=0.0,
     )
-    # The measured lift tracks the streamed command (30 Hz cadence).
+    # The measured lift tracks the streamed command (realtime cadence).
     for tick in (index * 0.05 for index in range(1, 23)):
         action = composer.compose(measured, _metadata(), True, now=tick)
         measured["vertical_move"] = composer.mapper.lift_height_to_urdf(action["lift_axis.height_mm"])

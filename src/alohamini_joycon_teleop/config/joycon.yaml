@@ -4,14 +4,14 @@ alohamini_joycon_teleop:
     input_endpoint: tcp://127.0.0.1:5567
     input_timeout_sec: 0.25
     measured_state_timeout_sec: 0.25
-    control_rate_hz: 30.0
+    control_rate_hz: 50.0
     ik_rate_hz: 20.0
     # Realtime Joy-Con control uses the exact packaged DH model and local DLS.
     # "moveit" keeps the older point-IK service path for comparison only.
     arm_control_mode: differential
     ik_timeout_sec: 0.3
     deadzone: 0.25
-    tcp_speed_m_s: 0.04
+    tcp_speed_m_s: 0.15
     orientation_scale: 1.0
     orientation_deadband_rad: 0.02
     # Per-axis signs (roll, pitch, yaw) of the Joy-Con attitude increments
@@ -19,7 +19,7 @@ alohamini_joycon_teleop:
     # relative to the gripper/ROS visual convention, so both are negated.
     orientation_axis_signs: [-1.0, 1.0, -1.0]
     max_orientation_delta_rad: 1.2
-    orientation_speed_rad_s: 1.0
+    orientation_speed_rad_s: 2.0
     imu_latch_reference: current
     preview_home: installed
     max_joint_step_rad: 0.10
@@ -30,11 +30,11 @@ alohamini_joycon_teleop:
     dls_orientation_weight: 0.35
     dls_damping: 0.04
     dls_max_joint_velocity_rad_s: 1.5
-    dls_max_joint_step_rad: 0.08
-    # Keep the 30 Hz loop, but command a longer feedback-anchored position
-    # look-ahead so real servos cross friction/backlash instead of point-jogging.
-    dls_command_horizon_sec: 0.20
-    dls_max_target_error_m: 0.04
+    dls_max_joint_step_rad: 0.10
+    # Use a short feedback-anchored look-ahead to cross friction/backlash without
+    # driving the solver at its joint-step ceiling during ordinary motion.
+    dls_command_horizon_sec: 0.12
+    dls_max_target_error_m: 0.025
     # Never drive farther into a physical endpoint from within this margin.
     dls_joint_limit_margin_rad: 0.03
     avoid_collisions: true
@@ -46,7 +46,8 @@ alohamini_joycon_teleop:
     # A held Joy-Con button may contain isolated false HID reports. Presses
     # remain immediate; release must stay false this long before mode changes.
     button_release_grace_sec: 0.12
-    # Suppress contact bounce without changing the shared ZL/ZR toggle logic.
+    # Minimum interval between accepted presses. Re-arming additionally requires
+    # a continuous release for button_release_grace_sec.
     gripper_button_debounce_sec: 0.30
     auto_enable_commands: false
     preview_joint_states_topic: /alohamini_plan_only/joint_states

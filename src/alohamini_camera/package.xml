@@ -1,28 +1,24 @@
 <?xml version="1.0"?>
 <package format="3">
-  <name>alohamini_lerobot_bridge</name>
+  <name>alohamini_camera</name>
   <version>0.1.0</version>
-  <description>Safe ROS 2 state and command bridge for the LeRobot-owned AlohaMini Host runtime.</description>
+  <description>Timestamped ROS 2 camera bridge and calibrated optical TF publisher for AlohaMini.</description>
   <maintainer email="anncatto@users.noreply.github.com">anncatto</maintainer>
   <license>Apache-2.0</license>
 
   <buildtool_depend>ament_python</buildtool_depend>
   <exec_depend>ament_index_python</exec_depend>
   <exec_depend>alohamini_calibration</exec_depend>
-  <exec_depend>alohamini_camera</exec_depend>
-  <exec_depend>alohamini_description</exec_depend>
-  <exec_depend>control_msgs</exec_depend>
   <exec_depend>diagnostic_msgs</exec_depend>
-  <exec_depend>geometry_msgs</exec_depend>
   <exec_depend>launch</exec_depend>
   <exec_depend>launch_ros</exec_depend>
-  <exec_depend>rclpy</exec_depend>
-  <exec_depend>sensor_msgs</exec_depend>
-  <exec_depend>std_msgs</exec_depend>
-  <exec_depend>std_srvs</exec_depend>
-  <exec_depend>trajectory_msgs</exec_depend>
+  <exec_depend>python3-numpy</exec_depend>
+  <exec_depend>python3-pil</exec_depend>
   <exec_depend>python3-yaml</exec_depend>
   <exec_depend>python3-zmq</exec_depend>
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>tf2_ros</exec_depend>
   <test_depend>python3-pytest</test_depend>
 
   <export><build_type>ament_python</build_type></export>

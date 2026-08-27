@@ -9,7 +9,14 @@ install(
 )
 
 install(
-  PROGRAMS scripts/calibrate_arms scripts/calibrate_lift_axis scripts/sync_arm_mapping
+  PROGRAMS
+    scripts/calibrate_arms
+    scripts/calibrate_camera_intrinsics
+    scripts/calibrate_hand_eye
+    scripts/calibrate_lift_axis
+    scripts/capture_camera_calibration
+    scripts/capture_hand_eye_samples
+    scripts/sync_arm_mapping
   DESTINATION lib/${PROJECT_NAME}
 )
 

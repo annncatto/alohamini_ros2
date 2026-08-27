@@ -222,18 +222,53 @@ def test_first_measured_lift_state_updates_removed_hold_state_safely():
 def test_gripper_trigger_is_edge_detected_and_debounced_on_both_sides():
     harness = object.__new__(JoyConTeleop)
     harness.arms = {"left": ArmControl(), "right": ArmControl()}
-    harness.get_parameter = lambda _name: SimpleNamespace(value=0.30)
+    parameters = {
+        "button_release_grace_sec": 0.12,
+        "gripper_button_debounce_sec": 0.30,
+    }
+    harness.get_parameter = lambda name: SimpleNamespace(value=parameters[name])
     toggles = []
     harness.toggle_gripper = lambda side: toggles.append(side)
 
     for side in ("left", "right"):
         JoyConTeleop.update_gripper_button(harness, side, True, 1.00)
         JoyConTeleop.update_gripper_button(harness, side, False, 1.05)
+        # A short false report followed by true is contact/report bounce, not a
+        # second physical press, even after the minimum press interval expires.
         JoyConTeleop.update_gripper_button(harness, side, True, 1.10)
-        JoyConTeleop.update_gripper_button(harness, side, False, 1.15)
-        JoyConTeleop.update_gripper_button(harness, side, True, 1.31)
+        JoyConTeleop.update_gripper_button(harness, side, False, 1.35)
+        JoyConTeleop.update_gripper_button(harness, side, False, 1.48)
+        JoyConTeleop.update_gripper_button(harness, side, True, 1.50)
 
     assert toggles == ["left", "left", "right", "right"]
+
+
+class _GripperClient:
+    def __init__(self):
+        self.goals = []
+
+    def server_is_ready(self):
+        return True
+
+    def send_goal_async(self, goal):
+        self.goals.append(goal)
+
+
+def test_gripper_toggle_reverses_last_command_even_without_measured_motion():
+    node = object.__new__(JoyConTeleop)
+    node.hardware_mode = True
+    node.positions = {"left_gripper": 0.32}
+    node.arms = {"left": ArmControl()}
+    client = _GripperClient()
+    node.gripper_clients = {"left": client}
+
+    JoyConTeleop.toggle_gripper(node, "left")
+    # Keep measured feedback unchanged to model a stalled/loaded opening command.
+    JoyConTeleop.toggle_gripper(node, "left")
+
+    assert [goal.command.position for goal in client.goals] == pytest.approx(
+        [-1.8030294104, 0.32]
+    )
 
 
 def test_command_buttons_ignore_short_false_reports_then_release():

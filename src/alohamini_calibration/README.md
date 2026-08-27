@@ -72,6 +72,59 @@ placement. Their status remains part of the authoritative record. Downstream
 projects consume exports from this package and do not reverse-sync their local
 copies over these files.
 
+## Camera intrinsic and hand-eye calibration
+
+The Host camera-only stream uses port 5557 and does not compete with the 50 Hz
+Bridge state channel. Capture unique JPEG frames without commanding hardware:
+
+```bash
+ros2 run alohamini_calibration capture_camera_calibration \
+  --host PI5_IP --camera wrist_right --count 40 \
+  --output ~/camera_calibration/wrist_right
+```
+
+Run the OpenCV solvers in the `lerobot_alohamini` Conda environment, which
+contains fisheye and hand-eye support:
+
+```bash
+conda activate lerobot_alohamini
+ros2 run alohamini_calibration calibrate_camera_intrinsics \
+  --capture-dir ~/camera_calibration/wrist_right \
+  --board $(ros2 pkg prefix alohamini_calibration)/share/alohamini_calibration/config/cameras/boards/checkerboard_9x6_25mm.yaml \
+  --camera wrist_right --frame-id right_camera_optical --model equidistant \
+  --output ~/camera_calibration/wrist_right_candidate.yaml
+```
+
+For eye-in-hand capture, start the camera node in `timestamp_mode:=host_wall`,
+synchronize the Pi and ROS computer clocks, fix the checkerboard in the world,
+and move the arm slowly through diverse poses. The capture tool is read-only:
+
+```bash
+ros2 run alohamini_calibration capture_hand_eye_samples \
+  --camera wrist_right \
+  --image-topic /alohamini/cameras/wrist_right/image_raw/compressed \
+  --gripper-frame right_Fixed_Jaw --mount-link right_camera \
+  --output ~/camera_calibration/hand_eye_right
+```
+
+Then solve and compare Tsai, Park, and Horaud:
+
+```bash
+conda activate lerobot_alohamini
+ros2 run alohamini_calibration calibrate_hand_eye \
+  --capture-dir ~/camera_calibration/hand_eye_right \
+  --intrinsics ~/camera_calibration/wrist_right_candidate.yaml \
+  --board $(ros2 pkg prefix alohamini_calibration)/share/alohamini_calibration/config/cameras/boards/checkerboard_9x6_25mm.yaml \
+  --optical-frame right_camera_optical \
+  --output ~/camera_calibration/wrist_right_hand_eye_candidate.yaml
+```
+
+For the fixed `forward` camera, rigidly attach the checkerboard to a gripper and
+pass `--calibration-type eye_to_hand` during capture. The same solver then uses
+the inverted robot poses and outputs `base_link -> forward_camera_optical` plus
+the derived `front_camera -> forward_camera_optical` transform. Never mix a
+fixed-board wrist capture with an attached-board forward capture.
+
 ## Per-robot folded-Home mapping
 
 `AlohaMiniRobot.json` contains EEPROM homing offsets and LeRobot normalization

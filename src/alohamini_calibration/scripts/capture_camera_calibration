@@ -1,0 +1,105 @@
+#!/usr/bin/python3
+"""Capture unique JPEG frames directly from the Host camera-only stream."""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import sys
+import time
+from datetime import datetime, timezone
+from pathlib import Path
+
+import yaml
+import zmq
+
+
+def parse_message(parts: list[bytes], expected_camera: str) -> tuple[dict, bytes]:
+    if len(parts) != 3 or parts[0] != f"camera/{expected_camera}".encode():
+        raise ValueError("unexpected Host camera multipart message")
+    metadata = json.loads(parts[1].decode("utf-8"))
+    if (
+        not isinstance(metadata, dict)
+        or metadata.get("schema_version") != 1
+        or metadata.get("camera_name") != expected_camera
+        or metadata.get("encoding") != "jpeg"
+    ):
+        raise ValueError("invalid Host camera metadata")
+    if not parts[2].startswith(b"\xff\xd8"):
+        raise ValueError("Host camera payload is not JPEG")
+    return metadata, parts[2]
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--host", required=True)
+    parser.add_argument("--port", type=int, default=5557)
+    parser.add_argument("--camera", required=True)
+    parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--count", type=int, default=40)
+    parser.add_argument("--min-interval-sec", type=float, default=0.20)
+    parser.add_argument("--timeout-sec", type=float, default=5.0)
+    args = parser.parse_args()
+    if args.count < 1 or args.min_interval_sec < 0.0 or args.timeout_sec <= 0.0:
+        raise ValueError("count and timeout must be positive; interval cannot be negative")
+
+    args.output.mkdir(parents=True, exist_ok=True)
+    context = zmq.Context()
+    socket = context.socket(zmq.SUB)
+    socket.setsockopt(zmq.LINGER, 0)
+    socket.setsockopt(zmq.SUBSCRIBE, f"camera/{args.camera}".encode())
+    socket.connect(f"tcp://{args.host}:{args.port}")
+    samples = []
+    last_saved = 0.0
+    deadline = time.monotonic() + args.timeout_sec
+    try:
+        while len(samples) < args.count:
+            if not socket.poll(100, zmq.POLLIN):
+                if time.monotonic() >= deadline:
+                    raise TimeoutError("timed out waiting for Host camera stream")
+                continue
+            metadata, jpeg = parse_message(socket.recv_multipart(), args.camera)
+            deadline = time.monotonic() + args.timeout_sec
+            now = time.monotonic()
+            if now - last_saved < args.min_interval_sec:
+                continue
+            index = len(samples)
+            filename = f"{args.camera}_{index:04d}.jpg"
+            path = args.output / filename
+            path.write_bytes(jpeg)
+            samples.append(
+                {
+                    "file": filename,
+                    "sequence": int(metadata["sequence"]),
+                    "capture_monotonic_s": float(metadata["capture_monotonic_s"]),
+                    "capture_unix_ns": int(metadata["capture_unix_ns"]),
+                    "sha256": hashlib.sha256(jpeg).hexdigest(),
+                }
+            )
+            last_saved = now
+            print(f"[{len(samples):03d}/{args.count:03d}] {filename}", file=sys.stderr)
+    finally:
+        socket.close(linger=0)
+        context.term()
+
+    manifest = {
+        "schema_version": 1,
+        "status": "raw_capture",
+        "captured_at": datetime.now(timezone.utc).isoformat(),
+        "camera_name": args.camera,
+        "source": {
+            "transport": "alohamini_host_camera_stream_v1",
+            "host": args.host,
+            "port": args.port,
+        },
+        "samples": samples,
+    }
+    (args.output / "manifest.yaml").write_text(
+        yaml.safe_dump(manifest, sort_keys=False), encoding="utf-8"
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

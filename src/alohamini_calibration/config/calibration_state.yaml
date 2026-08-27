@@ -18,6 +18,8 @@ cameras:
   right_wrist_extrinsics: manual_candidate_not_hand_eye_calibrated
   left_wrist_intrinsics: unavailable
   left_wrist_extrinsics: unavailable
+  checkerboard_intrinsic_tooling: available_candidate_output_only
+  host_camera_stream_capture: protocol_v1_port_5557
 
 bootstrap_sources:
   hardware_and_gripper: robotwin_and_lerobot_hardware_test

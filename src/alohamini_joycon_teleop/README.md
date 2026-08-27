@@ -6,7 +6,7 @@ Joy-Con Cartesian teleoperation for AlohaMini. The realtime arm path is:
 one HID reader / Joy-Con
   -> raw accel + gyro + buttons + sticks (50 Hz, timestamped ZMQ)
   -> relative quaternion + faucet XYZ command
-  -> exact URDF-derived DH FK/Jacobian + damped differential IK (30 Hz)
+  -> exact URDF-derived DH FK/Jacobian + damped differential IK (50 Hz)
   -> standard arm JointJog
   -> guarded LeRobot bridge
   -> Host trajectory and tracking supervision
@@ -62,7 +62,9 @@ arm. The arm-base axes are `+X = robot left`, `-Y = robot forward`, `+Z = up`.
 - Differential DLS applies `orientation_axis_signs` to the relative quaternion;
   the Joy-Con roll and yaw axes are mirrored so physical rotations command the
   gripper in the same visual direction instead of the opposite direction.
-- ZL/ZR toggles the corresponding gripper.
+- ZL/ZR toggles the corresponding gripper. A press re-arms only after a
+  continuously confirmed release, so isolated false HID reports cannot issue
+  an unintended second toggle.
 - Capture/Home re-latches measured FK and the Joy-Con attitude.
 - Without an arm rail clutch, sticks control the mobile base. Right shoulder +
   stick horizontal controls base yaw. Left shoulder + stick vertical controls
@@ -78,15 +80,15 @@ base control. The same filter is applied symmetrically to both Joy-Cons. Once an
 L+vertical-stick lift gesture starts, it remains assigned to lift until the
 stick returns to its deadzone; it cannot leak into base translation mid-gesture.
 
-Hardware mode keeps the input and IK loop at 30 Hz while using a bounded 200 ms
+Hardware mode keeps the input and IK loop at 50 Hz while using a bounded 120 ms
 joint-position look-ahead. This overcomes servo friction/backlash without
 removing the Bridge tracking gate or Host trajectory shaping. Preview mode uses
 the real timer step because simulated joints have no lag. Velocity and position
 bounds scale the complete DLS joint vector, preserving its direction instead of
 independently clipping joints and introducing Cartesian kinks.
 
-The default face-button and faucet Cartesian speed is 0.04 m/s and relative
-orientation speed is 1.0 rad/s. Tune `tcp_speed_m_s` and
+Tune the face-button/faucet Cartesian speed with `tcp_speed_m_s` and the
+relative orientation speed with
 `orientation_speed_rad_s` independently without changing the bounded DLS/Host
 safety layers.
 
