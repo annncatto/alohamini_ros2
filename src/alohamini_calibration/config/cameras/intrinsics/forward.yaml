@@ -5,24 +5,25 @@ camera_matrix:
   rows: 3
   cols: 3
   data:
-  - 385.81054424416965
+  - 372.1672660564381
   - 0.0
-  - 344.6682288074081
+  - 291.43797781776067
   - 0.0
-  - 386.9478079340189
-  - 252.78222685173822
+  - 372.51068451528965
+  - 258.8241807539384
   - 0.0
   - 0.0
   - 1.0
-distortion_model: equidistant
+distortion_model: plumb_bob
 distortion_coefficients:
   rows: 1
-  cols: 4
+  cols: 5
   data:
-  - -0.02888559594159282
-  - -0.024579755118512757
-  - 0.027972460426745976
-  - -0.0019803476790380857
+  - -0.3354715189266343
+  - 0.13848230589446037
+  - 0.00019563767660914935
+  - -0.0017685186445054418
+  - -0.027902404049010322
 rectification_matrix:
   rows: 3
   cols: 3
@@ -40,16 +41,214 @@ projection_matrix:
   rows: 3
   cols: 4
   data:
-  - 385.81054424416965
+  - 372.1672660564381
   - 0.0
-  - 344.6682288074081
+  - 291.43797781776067
   - 0.0
   - 0.0
-  - 386.9478079340189
-  - 252.78222685173822
+  - 372.51068451528965
+  - 258.8241807539384
   - 0.0
   - 0.0
   - 0.0
   - 1.0
   - 0.0
 frame_id: forward_camera_optical
+status: candidate_intrinsics_requires_review
+calibration_report:
+  calibrated_at: '2026-08-28T07:26:04.194607+00:00'
+  opencv_version: 4.13.0
+  target_type: charuco
+  squares_x: 9
+  squares_y: 7
+  square_length_m: 0.026
+  marker_length_m: 0.0187
+  dictionary: DICT_5X5_1000
+  marker_id_min: 300
+  marker_id_max: 330
+  legacy_pattern: false
+  valid_images: 59
+  rms_px: 0.5067335603822064
+  mean_per_image_rms_px: 0.4067912091030022
+  max_per_image_rms_px: 1.374031711937671
+  per_image_rms_px:
+  - file: forward_0000.jpg
+    points: 42
+    rms_px: 0.3577300426993305
+  - file: forward_0001.jpg
+    points: 31
+    rms_px: 0.19816079420839497
+  - file: forward_0002.jpg
+    points: 34
+    rms_px: 0.5754774709357412
+  - file: forward_0003.jpg
+    points: 34
+    rms_px: 0.1707287970166158
+  - file: forward_0004.jpg
+    points: 35
+    rms_px: 0.27193180271786266
+  - file: forward_0005.jpg
+    points: 41
+    rms_px: 0.3033008769632439
+  - file: forward_0006.jpg
+    points: 30
+    rms_px: 0.533248614666945
+  - file: forward_0007.jpg
+    points: 25
+    rms_px: 1.374031711937671
+  - file: forward_0008.jpg
+    points: 16
+    rms_px: 0.09433375762085733
+  - file: forward_0009.jpg
+    points: 23
+    rms_px: 0.2976442202970449
+  - file: forward_0010.jpg
+    points: 22
+    rms_px: 0.16702996820245253
+  - file: forward_0011.jpg
+    points: 28
+    rms_px: 0.15286187453402028
+  - file: forward_0012.jpg
+    points: 30
+    rms_px: 0.1560333189101923
+  - file: forward_0013.jpg
+    points: 24
+    rms_px: 0.14636020055049045
+  - file: forward_0014.jpg
+    points: 17
+    rms_px: 0.14018821147254104
+  - file: forward_0015.jpg
+    points: 35
+    rms_px: 0.23805633117892375
+  - file: forward_0016.jpg
+    points: 29
+    rms_px: 0.23363469796008568
+  - file: forward_0017.jpg
+    points: 18
+    rms_px: 0.41156481846212917
+  - file: forward_0018.jpg
+    points: 11
+    rms_px: 0.1717804580751331
+  - file: forward_0019.jpg
+    points: 19
+    rms_px: 0.22960000404372016
+  - file: forward_0020.jpg
+    points: 36
+    rms_px: 0.5095406522235685
+  - file: forward_0021.jpg
+    points: 32
+    rms_px: 0.37580336500104167
+  - file: forward_0022.jpg
+    points: 36
+    rms_px: 0.8228305655751029
+  - file: forward_0023.jpg
+    points: 42
+    rms_px: 0.6216451912813103
+  - file: forward_0024.jpg
+    points: 36
+    rms_px: 0.4105159041391645
+  - file: forward_0025.jpg
+    points: 42
+    rms_px: 0.1996526935295184
+  - file: forward_0026.jpg
+    points: 34
+    rms_px: 0.29503755260609277
+  - file: forward_0027.jpg
+    points: 41
+    rms_px: 0.3096402760456919
+  - file: forward_0028.jpg
+    points: 35
+    rms_px: 0.711822522214582
+  - file: forward_0029.jpg
+    points: 39
+    rms_px: 0.7150419362497399
+  - file: forward_0030.jpg
+    points: 35
+    rms_px: 0.8447743888377619
+  - file: forward_0031.jpg
+    points: 26
+    rms_px: 0.6365323766291255
+  - file: forward_0032.jpg
+    points: 22
+    rms_px: 1.3611560317033384
+  - file: forward_0033.jpg
+    points: 19
+    rms_px: 0.454329814451201
+  - file: forward_0034.jpg
+    points: 40
+    rms_px: 0.7089487882463683
+  - file: forward_0035.jpg
+    points: 32
+    rms_px: 0.3932641739278507
+  - file: forward_0036.jpg
+    points: 33
+    rms_px: 0.5884101590346392
+  - file: forward_0037.jpg
+    points: 42
+    rms_px: 0.40781729895126945
+  - file: forward_0038.jpg
+    points: 22
+    rms_px: 0.28542555995098046
+  - file: forward_0039.jpg
+    points: 25
+    rms_px: 0.30121215802267143
+  - file: forward_0040.jpg
+    points: 27
+    rms_px: 0.3267419144068811
+  - file: forward_0041.jpg
+    points: 29
+    rms_px: 1.0732124066342192
+  - file: forward_0042.jpg
+    points: 36
+    rms_px: 0.2871208898511948
+  - file: forward_0043.jpg
+    points: 40
+    rms_px: 0.3900437267499545
+  - file: forward_0044.jpg
+    points: 34
+    rms_px: 0.2557333824180073
+  - file: forward_0045.jpg
+    points: 36
+    rms_px: 0.5319449050293362
+  - file: forward_0046.jpg
+    points: 34
+    rms_px: 0.11768819028420194
+  - file: forward_0047.jpg
+    points: 29
+    rms_px: 0.20680253116327899
+  - file: forward_0049.jpg
+    points: 15
+    rms_px: 0.21565528651416974
+  - file: forward_0050.jpg
+    points: 36
+    rms_px: 0.3178809165510712
+  - file: forward_0051.jpg
+    points: 26
+    rms_px: 0.30323575583424084
+  - file: forward_0052.jpg
+    points: 19
+    rms_px: 0.1966499408115452
+  - file: forward_0053.jpg
+    points: 22
+    rms_px: 0.25437652355296586
+  - file: forward_0054.jpg
+    points: 30
+    rms_px: 0.13852187187769702
+  - file: forward_0055.jpg
+    points: 14
+    rms_px: 0.14084180136752714
+  - file: forward_0056.jpg
+    points: 23
+    rms_px: 0.19713107799770413
+  - file: forward_0057.jpg
+    points: 32
+    rms_px: 1.205227537078994
+  - file: forward_0058.jpg
+    points: 32
+    rms_px: 0.2918362512569751
+  - file: forward_0059.jpg
+    points: 36
+    rms_px: 0.37293704662275373
+  rejected:
+  - file: forward_0048.jpg
+    reason: calibration_target_not_found

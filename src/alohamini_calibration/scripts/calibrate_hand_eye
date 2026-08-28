@@ -12,6 +12,8 @@ import cv2
 import numpy as np
 import yaml
 
+from camera_board import board_report, detect_board, load_board
+
 
 def quaternion_matrix(values) -> np.ndarray:
     x, y, z, w = (float(value) for value in values)
@@ -47,17 +49,35 @@ def matrix_quaternion(rotation: np.ndarray) -> list[float]:
     else:
         index = int(np.argmax(np.diag(rotation)))
         if index == 0:
-            scale = math.sqrt(1.0 + rotation[0, 0] - rotation[1, 1] - rotation[2, 2]) * 2
+            scale = (
+                math.sqrt(1.0 + rotation[0, 0] - rotation[1, 1] - rotation[2, 2]) * 2
+            )
             w = (rotation[2, 1] - rotation[1, 2]) / scale
-            x, y, z = 0.25 * scale, (rotation[0, 1] + rotation[1, 0]) / scale, (rotation[0, 2] + rotation[2, 0]) / scale
+            x, y, z = (
+                0.25 * scale,
+                (rotation[0, 1] + rotation[1, 0]) / scale,
+                (rotation[0, 2] + rotation[2, 0]) / scale,
+            )
         elif index == 1:
-            scale = math.sqrt(1.0 + rotation[1, 1] - rotation[0, 0] - rotation[2, 2]) * 2
+            scale = (
+                math.sqrt(1.0 + rotation[1, 1] - rotation[0, 0] - rotation[2, 2]) * 2
+            )
             w = (rotation[0, 2] - rotation[2, 0]) / scale
-            x, y, z = (rotation[0, 1] + rotation[1, 0]) / scale, 0.25 * scale, (rotation[1, 2] + rotation[2, 1]) / scale
+            x, y, z = (
+                (rotation[0, 1] + rotation[1, 0]) / scale,
+                0.25 * scale,
+                (rotation[1, 2] + rotation[2, 1]) / scale,
+            )
         else:
-            scale = math.sqrt(1.0 + rotation[2, 2] - rotation[0, 0] - rotation[1, 1]) * 2
+            scale = (
+                math.sqrt(1.0 + rotation[2, 2] - rotation[0, 0] - rotation[1, 1]) * 2
+            )
             w = (rotation[1, 0] - rotation[0, 1]) / scale
-            x, y, z = (rotation[0, 2] + rotation[2, 0]) / scale, (rotation[1, 2] + rotation[2, 1]) / scale, 0.25 * scale
+            x, y, z = (
+                (rotation[0, 2] + rotation[2, 0]) / scale,
+                (rotation[1, 2] + rotation[2, 1]) / scale,
+                0.25 * scale,
+            )
     quaternion = np.array([x, y, z, w], dtype=np.float64)
     quaternion /= np.linalg.norm(quaternion)
     if quaternion[3] < 0.0:
@@ -65,16 +85,10 @@ def matrix_quaternion(rotation: np.ndarray) -> list[float]:
     return quaternion.tolist()
 
 
-def board_points(board: dict) -> np.ndarray:
-    columns, rows = int(board["columns"]), int(board["rows"])
-    points = np.zeros((columns * rows, 3), np.float64)
-    points[:, :2] = np.mgrid[0:columns, 0:rows].T.reshape(-1, 2)
-    points *= float(board["square_size_m"])
-    return points
-
-
 def camera_matrix(intrinsics: dict):
-    matrix = np.asarray(intrinsics["camera_matrix"]["data"], dtype=np.float64).reshape(3, 3)
+    matrix = np.asarray(intrinsics["camera_matrix"]["data"], dtype=np.float64).reshape(
+        3, 3
+    )
     distortion = np.asarray(
         intrinsics["distortion_coefficients"]["data"], dtype=np.float64
     ).reshape(-1, 1)
@@ -82,24 +96,25 @@ def camera_matrix(intrinsics: dict):
 
 
 def target_to_camera(path: Path, board: dict, intrinsics: dict):
-    image = cv2.imread(str(path), cv2.IMREAD_GRAYSCALE)
+    image = cv2.imread(str(path), cv2.IMREAD_COLOR)
     if image is None:
         raise ValueError("image decode failed")
-    pattern = (int(board["columns"]), int(board["rows"]))
-    found, corners = cv2.findChessboardCornersSB(
-        image, pattern, flags=cv2.CALIB_CB_EXHAUSTIVE | cv2.CALIB_CB_ACCURACY
-    )
-    if not found:
-        raise ValueError("checkerboard not found")
+    detection = detect_board(image, board)
+    if detection is None:
+        raise ValueError("calibration target not found")
     matrix, distortion = camera_matrix(intrinsics)
-    points = corners.reshape(-1, 1, 2).astype(np.float64)
+    points = detection.image_points.astype(np.float64)
     if intrinsics["distortion_model"] == "equidistant":
         points = cv2.fisheye.undistortPoints(points, matrix, distortion, P=matrix)
         solve_distortion = np.zeros((4, 1), dtype=np.float64)
     else:
         solve_distortion = distortion
     success, rvec, tvec = cv2.solvePnP(
-        board_points(board), points, matrix, solve_distortion, flags=cv2.SOLVEPNP_ITERATIVE
+        detection.object_points.reshape(-1, 3).astype(np.float64),
+        points,
+        matrix,
+        solve_distortion,
+        flags=cv2.SOLVEPNP_ITERATIVE,
     )
     if not success:
         raise ValueError("solvePnP failed")
@@ -120,10 +135,19 @@ def closure_residual(base_gripper, camera_target, gripper_camera):
     ]
     translations = np.asarray([value[:3, 3] for value in base_targets])
     center = np.mean(translations, axis=0)
-    translation_rms = math.sqrt(float(np.mean(np.sum((translations - center) ** 2, axis=1))))
+    translation_rms = math.sqrt(
+        float(np.mean(np.sum((translations - center) ** 2, axis=1)))
+    )
     reference = base_targets[0][:3, :3]
     rotation_rms = math.sqrt(
-        float(np.mean([rotation_angle(reference.T @ value[:3, :3]) ** 2 for value in base_targets]))
+        float(
+            np.mean(
+                [
+                    rotation_angle(reference.T @ value[:3, :3]) ** 2
+                    for value in base_targets
+                ]
+            )
+        )
     )
     return translation_rms, rotation_rms
 
@@ -135,12 +159,17 @@ def eye_to_hand_closure_residual(base_gripper, camera_target, base_camera):
     ]
     translations = np.asarray([value[:3, 3] for value in gripper_targets])
     center = np.mean(translations, axis=0)
-    translation_rms = math.sqrt(float(np.mean(np.sum((translations - center) ** 2, axis=1))))
+    translation_rms = math.sqrt(
+        float(np.mean(np.sum((translations - center) ** 2, axis=1)))
+    )
     reference = gripper_targets[0][:3, :3]
     rotation_rms = math.sqrt(
         float(
             np.mean(
-                [rotation_angle(reference.T @ value[:3, :3]) ** 2 for value in gripper_targets]
+                [
+                    rotation_angle(reference.T @ value[:3, :3]) ** 2
+                    for value in gripper_targets
+                ]
             )
         )
     )
@@ -164,16 +193,20 @@ def main() -> int:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--min-valid-samples", type=int, default=15)
     args = parser.parse_args()
-    manifest = yaml.safe_load((args.capture_dir / "manifest.yaml").read_text(encoding="utf-8"))
+    manifest = yaml.safe_load(
+        (args.capture_dir / "manifest.yaml").read_text(encoding="utf-8")
+    )
     calibration_type = manifest.get("calibration_type")
     if calibration_type not in ("eye_in_hand", "eye_to_hand"):
         raise ValueError("capture calibration_type must be eye_in_hand or eye_to_hand")
     intrinsics = yaml.safe_load(args.intrinsics.read_text(encoding="utf-8"))
-    board = yaml.safe_load(args.board.read_text(encoding="utf-8"))
+    board = load_board(args.board)
     base_gripper, base_mount, camera_target, accepted, rejected = [], [], [], [], []
     for sample in manifest["samples"]:
         try:
-            camera = target_to_camera(args.capture_dir / sample["file"], board, intrinsics)
+            camera = target_to_camera(
+                args.capture_dir / sample["file"], board, intrinsics
+            )
         except ValueError as error:
             rejected.append({"file": sample["file"], "reason": str(error)})
             continue
@@ -182,7 +215,9 @@ def main() -> int:
         camera_target.append(camera)
         accepted.append(sample["file"])
     if len(accepted) < args.min_valid_samples:
-        raise ValueError(f"only {len(accepted)} valid samples; need {args.min_valid_samples}")
+        raise ValueError(
+            f"only {len(accepted)} valid samples; need {args.min_valid_samples}"
+        )
 
     methods = {
         "tsai": cv2.CALIB_HAND_EYE_TSAI,
@@ -238,6 +273,7 @@ def main() -> int:
         "method": selected_name,
         "calibrated_at": datetime.now(timezone.utc).isoformat(),
         "opencv_version": cv2.__version__,
+        "board": board_report(board),
         "parent_frame": parent_frame,
         "mount_link": manifest["mount_link"],
         "optical_frame": args.optical_frame,
@@ -251,7 +287,9 @@ def main() -> int:
                 name: {
                     "translation_rms_m": value["translation_rms_m"],
                     "rotation_rms_rad": value["rotation_rms_rad"],
-                    "T_parent_from_camera_optical": transform_output(value["transform"]),
+                    "T_parent_from_camera_optical": transform_output(
+                        value["transform"]
+                    ),
                 }
                 for name, value in solutions.items()
             },

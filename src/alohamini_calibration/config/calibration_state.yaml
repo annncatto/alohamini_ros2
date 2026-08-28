@@ -18,7 +18,7 @@ cameras:
   right_wrist_extrinsics: manual_candidate_not_hand_eye_calibrated
   left_wrist_intrinsics: unavailable
   left_wrist_extrinsics: unavailable
-  checkerboard_intrinsic_tooling: available_candidate_output_only
+  charuco_intrinsic_and_hand_eye_tooling: standard_9x7_31_marker_board_available
   host_camera_stream_capture: protocol_v1_port_5557
 
 bootstrap_sources:

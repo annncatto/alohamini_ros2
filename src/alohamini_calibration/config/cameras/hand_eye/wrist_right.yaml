@@ -6,7 +6,7 @@ base_frame: base_link
 gripper_frame: right_Fixed_Jaw
 mount_link: right_camera
 optical_frame: right_camera_optical
-board: ../boards/checkerboard_9x6_25mm.yaml
+board: ../boards/charuco_9x7_26mm_18p7_ids300_330.yaml
 minimum_samples: 20
 minimum_translation_delta_m: 0.015
 minimum_rotation_delta_deg: 8.0

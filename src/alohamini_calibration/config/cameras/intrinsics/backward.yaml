@@ -1,0 +1,255 @@
+image_width: 640
+image_height: 480
+camera_name: backward
+camera_matrix:
+  rows: 3
+  cols: 3
+  data:
+  - 381.26242962166333
+  - 0.0
+  - 338.66828486116754
+  - 0.0
+  - 381.7609184298397
+  - 270.3581177109471
+  - 0.0
+  - 0.0
+  - 1.0
+distortion_model: plumb_bob
+distortion_coefficients:
+  rows: 1
+  cols: 5
+  data:
+  - -0.34938293323828523
+  - 0.15960957981737936
+  - 0.0014726061427182255
+  - -0.0004534490476683575
+  - -0.038524497558197396
+rectification_matrix:
+  rows: 3
+  cols: 3
+  data:
+  - 1.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 1.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 1.0
+projection_matrix:
+  rows: 3
+  cols: 4
+  data:
+  - 381.26242962166333
+  - 0.0
+  - 338.66828486116754
+  - 0.0
+  - 0.0
+  - 381.7609184298397
+  - 270.3581177109471
+  - 0.0
+  - 0.0
+  - 0.0
+  - 1.0
+  - 0.0
+frame_id: backward_camera_optical
+status: candidate_intrinsics_requires_review
+calibration_report:
+  calibrated_at: '2026-08-28T07:15:18.423750+00:00'
+  opencv_version: 4.13.0
+  target_type: charuco
+  squares_x: 9
+  squares_y: 7
+  square_length_m: 0.026
+  marker_length_m: 0.0187
+  dictionary: DICT_5X5_1000
+  marker_id_min: 300
+  marker_id_max: 330
+  legacy_pattern: false
+  valid_images: 60
+  rms_px: 0.5046302711770904
+  mean_per_image_rms_px: 0.43802094782926543
+  max_per_image_rms_px: 1.3340957241135432
+  per_image_rms_px:
+  - file: backward_0000.jpg
+    points: 36
+    rms_px: 0.6491003581875069
+  - file: backward_0001.jpg
+    points: 36
+    rms_px: 0.20770432787631785
+  - file: backward_0002.jpg
+    points: 44
+    rms_px: 0.7344033051458743
+  - file: backward_0003.jpg
+    points: 38
+    rms_px: 0.7872344124068816
+  - file: backward_0004.jpg
+    points: 26
+    rms_px: 0.634904519504077
+  - file: backward_0005.jpg
+    points: 24
+    rms_px: 1.3340957241135432
+  - file: backward_0006.jpg
+    points: 34
+    rms_px: 0.26862410975949835
+  - file: backward_0007.jpg
+    points: 43
+    rms_px: 0.5354731996662441
+  - file: backward_0008.jpg
+    points: 26
+    rms_px: 0.2749196860198037
+  - file: backward_0009.jpg
+    points: 43
+    rms_px: 0.49671938193580956
+  - file: backward_0010.jpg
+    points: 28
+    rms_px: 0.4298586710771778
+  - file: backward_0011.jpg
+    points: 42
+    rms_px: 0.2692993307297542
+  - file: backward_0012.jpg
+    points: 40
+    rms_px: 0.4017236426961825
+  - file: backward_0013.jpg
+    points: 21
+    rms_px: 0.8287311597743349
+  - file: backward_0014.jpg
+    points: 22
+    rms_px: 0.41636390337755513
+  - file: backward_0015.jpg
+    points: 10
+    rms_px: 0.19962534141137728
+  - file: backward_0016.jpg
+    points: 11
+    rms_px: 0.27643868123646037
+  - file: backward_0017.jpg
+    points: 23
+    rms_px: 0.3728783249695015
+  - file: backward_0018.jpg
+    points: 24
+    rms_px: 0.3022844378413212
+  - file: backward_0019.jpg
+    points: 22
+    rms_px: 0.3448283780463151
+  - file: backward_0020.jpg
+    points: 21
+    rms_px: 0.50464241119875
+  - file: backward_0021.jpg
+    points: 30
+    rms_px: 0.37759522151465597
+  - file: backward_0022.jpg
+    points: 42
+    rms_px: 0.36357486421490715
+  - file: backward_0023.jpg
+    points: 37
+    rms_px: 0.2597040453355188
+  - file: backward_0024.jpg
+    points: 37
+    rms_px: 0.2726596349010415
+  - file: backward_0025.jpg
+    points: 30
+    rms_px: 0.24398092458248463
+  - file: backward_0026.jpg
+    points: 32
+    rms_px: 0.26859739362727786
+  - file: backward_0027.jpg
+    points: 22
+    rms_px: 0.4267357450507802
+  - file: backward_0028.jpg
+    points: 44
+    rms_px: 0.510638536771467
+  - file: backward_0029.jpg
+    points: 32
+    rms_px: 0.8643632594805423
+  - file: backward_0030.jpg
+    points: 23
+    rms_px: 1.2594211935727206
+  - file: backward_0031.jpg
+    points: 34
+    rms_px: 0.5065001888662338
+  - file: backward_0032.jpg
+    points: 36
+    rms_px: 0.6942161594825947
+  - file: backward_0033.jpg
+    points: 31
+    rms_px: 0.8502510031638554
+  - file: backward_0034.jpg
+    points: 43
+    rms_px: 0.5011590599755315
+  - file: backward_0035.jpg
+    points: 25
+    rms_px: 0.7148127158779318
+  - file: backward_0036.jpg
+    points: 34
+    rms_px: 0.5339286197412207
+  - file: backward_0037.jpg
+    points: 33
+    rms_px: 0.34611863424614564
+  - file: backward_0038.jpg
+    points: 22
+    rms_px: 0.30001823388462334
+  - file: backward_0039.jpg
+    points: 32
+    rms_px: 0.3054905828632997
+  - file: backward_0040.jpg
+    points: 36
+    rms_px: 0.39161161054618604
+  - file: backward_0041.jpg
+    points: 36
+    rms_px: 0.39791355388335437
+  - file: backward_0042.jpg
+    points: 17
+    rms_px: 0.3507485591198233
+  - file: backward_0043.jpg
+    points: 38
+    rms_px: 0.550397638724946
+  - file: backward_0044.jpg
+    points: 36
+    rms_px: 0.5658200855408158
+  - file: backward_0045.jpg
+    points: 32
+    rms_px: 0.199705774949267
+  - file: backward_0046.jpg
+    points: 15
+    rms_px: 0.15141326010838682
+  - file: backward_0047.jpg
+    points: 19
+    rms_px: 0.32586090768627074
+  - file: backward_0048.jpg
+    points: 29
+    rms_px: 0.2356782498592044
+  - file: backward_0049.jpg
+    points: 15
+    rms_px: 0.1988209666827328
+  - file: backward_0050.jpg
+    points: 15
+    rms_px: 0.3132971556509005
+  - file: backward_0051.jpg
+    points: 20
+    rms_px: 0.23713294146599784
+  - file: backward_0052.jpg
+    points: 20
+    rms_px: 0.34370309183204834
+  - file: backward_0053.jpg
+    points: 32
+    rms_px: 0.3404091471057172
+  - file: backward_0054.jpg
+    points: 19
+    rms_px: 0.38194196351376436
+  - file: backward_0055.jpg
+    points: 29
+    rms_px: 0.5032239134527979
+  - file: backward_0056.jpg
+    points: 29
+    rms_px: 0.2368831582548438
+  - file: backward_0057.jpg
+    points: 23
+    rms_px: 0.25410037158347915
+  - file: backward_0058.jpg
+    points: 14
+    rms_px: 0.16789861351552995
+  - file: backward_0059.jpg
+    points: 41
+    rms_px: 0.2650765821527418
+  rejected: []

@@ -5,24 +5,25 @@ camera_matrix:
   rows: 3
   cols: 3
   data:
-  - 390.45341972438456
+  - 390.6095765817731
   - 0.0
-  - 332.07325355903544
+  - 324.97668294053676
   - 0.0
-  - 391.4789447788863
-  - 252.77376904861214
+  - 390.3103352188741
+  - 255.35060314422242
   - 0.0
   - 0.0
   - 1.0
-distortion_model: equidistant
+distortion_model: plumb_bob
 distortion_coefficients:
   rows: 1
-  cols: 4
+  cols: 5
   data:
-  - -0.04798012688849845
-  - 0.029271626296165105
-  - -0.031113167396547882
-  - 0.015439698179129258
+  - -0.3492003710684974
+  - 0.14852214555862578
+  - -0.003361307740832544
+  - -0.0007685636464843648
+  - -0.03365888824031929
 rectification_matrix:
   rows: 3
   cols: 3
@@ -40,16 +41,215 @@ projection_matrix:
   rows: 3
   cols: 4
   data:
-  - 390.45341972438456
+  - 390.6095765817731
   - 0.0
-  - 332.07325355903544
+  - 324.97668294053676
   - 0.0
   - 0.0
-  - 391.4789447788863
-  - 252.77376904861214
+  - 390.3103352188741
+  - 255.35060314422242
   - 0.0
   - 0.0
   - 0.0
   - 1.0
   - 0.0
 frame_id: right_camera_optical
+status: candidate_intrinsics_requires_review
+calibration_report:
+  calibrated_at: '2026-08-28T07:25:05.620858+00:00'
+  opencv_version: 4.13.0
+  target_type: charuco
+  squares_x: 9
+  squares_y: 7
+  square_length_m: 0.026
+  marker_length_m: 0.0187
+  dictionary: DICT_5X5_1000
+  marker_id_min: 300
+  marker_id_max: 330
+  legacy_pattern: false
+  valid_images: 60
+  rms_px: 0.4721722154941621
+  mean_per_image_rms_px: 0.46272837845127407
+  max_per_image_rms_px: 0.9622957578350876
+  per_image_rms_px:
+  - file: wrist_right_0000.jpg
+    points: 38
+    rms_px: 0.4229674008047204
+  - file: wrist_right_0001.jpg
+    points: 25
+    rms_px: 0.4891772636351401
+  - file: wrist_right_0002.jpg
+    points: 32
+    rms_px: 0.876325586834985
+  - file: wrist_right_0003.jpg
+    points: 33
+    rms_px: 0.5636556851679524
+  - file: wrist_right_0004.jpg
+    points: 23
+    rms_px: 0.5445247459468945
+  - file: wrist_right_0005.jpg
+    points: 27
+    rms_px: 0.7923676585610349
+  - file: wrist_right_0006.jpg
+    points: 38
+    rms_px: 0.5244602240197028
+  - file: wrist_right_0007.jpg
+    points: 40
+    rms_px: 0.5256000513224457
+  - file: wrist_right_0008.jpg
+    points: 38
+    rms_px: 0.30327231800987914
+  - file: wrist_right_0009.jpg
+    points: 41
+    rms_px: 0.3769938306893501
+  - file: wrist_right_0010.jpg
+    points: 42
+    rms_px: 0.45320814613882443
+  - file: wrist_right_0011.jpg
+    points: 31
+    rms_px: 0.4109961673762441
+  - file: wrist_right_0012.jpg
+    points: 19
+    rms_px: 0.9622957578350876
+  - file: wrist_right_0013.jpg
+    points: 34
+    rms_px: 0.5530116008982057
+  - file: wrist_right_0014.jpg
+    points: 35
+    rms_px: 0.5088153096362547
+  - file: wrist_right_0015.jpg
+    points: 31
+    rms_px: 0.50024590790821
+  - file: wrist_right_0016.jpg
+    points: 33
+    rms_px: 0.7707034828690927
+  - file: wrist_right_0017.jpg
+    points: 29
+    rms_px: 0.31188207746179375
+  - file: wrist_right_0018.jpg
+    points: 40
+    rms_px: 0.31351717652465744
+  - file: wrist_right_0019.jpg
+    points: 42
+    rms_px: 0.37963220729552605
+  - file: wrist_right_0020.jpg
+    points: 41
+    rms_px: 0.334710102668423
+  - file: wrist_right_0021.jpg
+    points: 34
+    rms_px: 0.5847150369980209
+  - file: wrist_right_0022.jpg
+    points: 44
+    rms_px: 0.2559306131225534
+  - file: wrist_right_0023.jpg
+    points: 36
+    rms_px: 0.44983775478255245
+  - file: wrist_right_0024.jpg
+    points: 36
+    rms_px: 0.4073381122807485
+  - file: wrist_right_0025.jpg
+    points: 32
+    rms_px: 0.481310330888438
+  - file: wrist_right_0026.jpg
+    points: 33
+    rms_px: 0.5269552530431985
+  - file: wrist_right_0027.jpg
+    points: 35
+    rms_px: 0.6194268039792838
+  - file: wrist_right_0028.jpg
+    points: 38
+    rms_px: 0.3460170215179149
+  - file: wrist_right_0029.jpg
+    points: 42
+    rms_px: 0.3755475778974635
+  - file: wrist_right_0030.jpg
+    points: 40
+    rms_px: 0.420577528534269
+  - file: wrist_right_0031.jpg
+    points: 46
+    rms_px: 0.4098559024869438
+  - file: wrist_right_0032.jpg
+    points: 28
+    rms_px: 0.5531570652594797
+  - file: wrist_right_0033.jpg
+    points: 37
+    rms_px: 0.3752313238137093
+  - file: wrist_right_0034.jpg
+    points: 33
+    rms_px: 0.3871935072816321
+  - file: wrist_right_0035.jpg
+    points: 48
+    rms_px: 0.4636275185884047
+  - file: wrist_right_0036.jpg
+    points: 44
+    rms_px: 0.42317213370217377
+  - file: wrist_right_0037.jpg
+    points: 24
+    rms_px: 0.36068469563814404
+  - file: wrist_right_0038.jpg
+    points: 30
+    rms_px: 0.4807169042307393
+  - file: wrist_right_0039.jpg
+    points: 32
+    rms_px: 0.5172510010145259
+  - file: wrist_right_0040.jpg
+    points: 35
+    rms_px: 0.3242700272042283
+  - file: wrist_right_0041.jpg
+    points: 35
+    rms_px: 0.3571693342225923
+  - file: wrist_right_0042.jpg
+    points: 30
+    rms_px: 0.4587747321532657
+  - file: wrist_right_0043.jpg
+    points: 33
+    rms_px: 0.3156974191399627
+  - file: wrist_right_0044.jpg
+    points: 42
+    rms_px: 0.7268870775233015
+  - file: wrist_right_0045.jpg
+    points: 44
+    rms_px: 0.3622455499723346
+  - file: wrist_right_0046.jpg
+    points: 44
+    rms_px: 0.3859752698463193
+  - file: wrist_right_0047.jpg
+    points: 40
+    rms_px: 0.3646430158040001
+  - file: wrist_right_0048.jpg
+    points: 37
+    rms_px: 0.45806868292130026
+  - file: wrist_right_0049.jpg
+    points: 23
+    rms_px: 0.45705453422489123
+  - file: wrist_right_0050.jpg
+    points: 25
+    rms_px: 0.28987664597067
+  - file: wrist_right_0051.jpg
+    points: 28
+    rms_px: 0.29793501821519885
+  - file: wrist_right_0052.jpg
+    points: 42
+    rms_px: 0.28852489168664996
+  - file: wrist_right_0053.jpg
+    points: 48
+    rms_px: 0.3986847797058535
+  - file: wrist_right_0054.jpg
+    points: 42
+    rms_px: 0.41593863677588355
+  - file: wrist_right_0055.jpg
+    points: 44
+    rms_px: 0.5385824050450422
+  - file: wrist_right_0056.jpg
+    points: 32
+    rms_px: 0.5719905386509834
+  - file: wrist_right_0057.jpg
+    points: 35
+    rms_px: 0.5088775575723349
+  - file: wrist_right_0058.jpg
+    points: 40
+    rms_px: 0.5001504060318152
+  - file: wrist_right_0059.jpg
+    points: 44
+    rms_px: 0.385447397745197
+  rejected: []

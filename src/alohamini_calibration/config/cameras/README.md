@@ -12,5 +12,11 @@ New captures and solver outputs must be written as candidates. The runtime
 extrinsics node rejects candidate transforms unless `allow_candidate:=true` is
 explicitly selected for validation.
 
-The packaged checkerboard file is a template: physically measure the printed
-square and update `square_size_m` before collecting hand-eye data.
+The default printable target is the OpenCV-standard 9x7 ChArUco board in
+`boards/charuco_9x7_26mm_18p7_ids300_330.yaml`. It has 31 markers with IDs
+300-330, 26.00 mm squares, and 18.70 mm markers. Print its PDF at actual size
+with fit-to-page disabled and verify the square size before calibration.
+
+`checkerboard_9x6_25mm.yaml` remains only as an optional generic checkerboard
+template. Intrinsic and hand-eye solvers dispatch on `target_type` and use the
+same board geometry and detector.

@@ -8,7 +8,9 @@ ROS 2 camera bridge for the dedicated AlohaMini Host camera stream on port
 ros2 launch alohamini_camera camera.launch.py host:=PI5_IP
 ```
 
-Published topics for each configured camera:
+The default configuration subscribes to all five Host cameras: `forward`,
+`backward`, `chest`, `wrist_left`, and `wrist_right`. Published topics for each
+configured camera:
 
 - `/alohamini/cameras/<name>/image_raw`
 - `/alohamini/cameras/<name>/image_raw/compressed`
@@ -17,6 +19,12 @@ Published topics for each configured camera:
 JPEG and CameraInfo remain at camera rate. Raw RGB decoding is demand-driven:
 the node does not allocate or serialize uncompressed images until an
 `image_raw` subscriber exists.
+
+An uncalibrated camera still publishes raw and compressed images using its
+configured optical frame, but intentionally does not publish `camera_info`.
+Diagnostics report `camera_info=unavailable_calibration_mode` until that
+camera's reviewed intrinsic YAML is installed. An explicitly configured but
+invalid `camera_info_url` remains a startup error.
 
 `timestamp_mode:=host_wall` preserves the Host capture time and requires the Pi
 and ROS computer clocks to be synchronized. Use `receipt` only for preview and

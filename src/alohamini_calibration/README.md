@@ -74,6 +74,22 @@ copies over these files.
 
 ## Camera intrinsic and hand-eye calibration
 
+The canonical target is the packaged OpenCV-standard 9x7 ChArUco board: 31
+markers (IDs 300-330), 26.00 mm squares, and 18.70 mm markers on A4 landscape.
+Print `alohamini_charuco_a4_9x7_31.pdf` at actual size with fit-to-page disabled,
+then verify several squares measure 26.00 mm. The older 9x6/25 mm checkerboard
+file is an optional template and is not the AlohaMini default.
+
+Regenerate the printable PNG and PDF after intentionally changing board
+geometry:
+
+```bash
+conda activate lerobot_alohamini
+ros2 run alohamini_calibration generate_charuco_board \
+  --board $(ros2 pkg prefix alohamini_calibration)/share/alohamini_calibration/config/cameras/boards/charuco_9x7_26mm_18p7_ids300_330.yaml \
+  --output-dir ~/camera_calibration/print
+```
+
 The Host camera-only stream uses port 5557 and does not compete with the 50 Hz
 Bridge state channel. Capture unique JPEG frames without commanding hardware:
 
@@ -83,6 +99,11 @@ ros2 run alohamini_calibration capture_camera_calibration \
   --output ~/camera_calibration/wrist_right
 ```
 
+The intrinsic capture opens a live OpenCV preview by default. It continues to
+save unique frames automatically at `--min-interval-sec`; press `Q` or `Esc` to
+finish early while keeping the images already saved. Pass `--no-preview` only
+for a headless capture host.
+
 Run the OpenCV solvers in the `lerobot_alohamini` Conda environment, which
 contains fisheye and hand-eye support:
 
@@ -90,13 +111,13 @@ contains fisheye and hand-eye support:
 conda activate lerobot_alohamini
 ros2 run alohamini_calibration calibrate_camera_intrinsics \
   --capture-dir ~/camera_calibration/wrist_right \
-  --board $(ros2 pkg prefix alohamini_calibration)/share/alohamini_calibration/config/cameras/boards/checkerboard_9x6_25mm.yaml \
-  --camera wrist_right --frame-id right_camera_optical --model equidistant \
+  --board $(ros2 pkg prefix alohamini_calibration)/share/alohamini_calibration/config/cameras/boards/charuco_9x7_26mm_18p7_ids300_330.yaml \
+  --camera wrist_right --frame-id right_camera_optical --model plumb_bob \
   --output ~/camera_calibration/wrist_right_candidate.yaml
 ```
 
 For eye-in-hand capture, start the camera node in `timestamp_mode:=host_wall`,
-synchronize the Pi and ROS computer clocks, fix the checkerboard in the world,
+synchronize the Pi and ROS computer clocks, fix the ChArUco board in the world,
 and move the arm slowly through diverse poses. The capture tool is read-only:
 
 ```bash
@@ -107,6 +128,22 @@ ros2 run alohamini_calibration capture_hand_eye_samples \
   --output ~/camera_calibration/hand_eye_right
 ```
 
+Hand-eye capture also opens a live OpenCV preview by default. It overlays the
+saved count and the current stationary/diversity gate state. Press `Q` or
+`Esc` to finish early and retain completed samples; use `--no-preview` on a
+headless ROS computer. The ROS Python environment therefore needs the declared
+`python3-opencv` runtime dependency. Its two-worker executor allows TF data to
+enter the Buffer while an image callback briefly waits for the transform at
+the capture timestamp; changing this path back to a single-threaded spin causes
+an accumulating future-extrapolation delay.
+
+The capture waits for the measured gripper pose to remain within 1.5 mm and
+0.75 degrees for 0.4 seconds before accepting a sample. These defaults can be
+adjusted with `--stationary-dwell-sec`, `--stationary-translation-mm`, and
+`--stationary-rotation-deg`. For eye-to-hand capture it also rejects samples if
+the fixed camera mount moves by more than 2 mm or 1 degree, protecting chest
+calibration from accidental lift motion.
+
 Then solve and compare Tsai, Park, and Horaud:
 
 ```bash
@@ -114,12 +151,12 @@ conda activate lerobot_alohamini
 ros2 run alohamini_calibration calibrate_hand_eye \
   --capture-dir ~/camera_calibration/hand_eye_right \
   --intrinsics ~/camera_calibration/wrist_right_candidate.yaml \
-  --board $(ros2 pkg prefix alohamini_calibration)/share/alohamini_calibration/config/cameras/boards/checkerboard_9x6_25mm.yaml \
+  --board $(ros2 pkg prefix alohamini_calibration)/share/alohamini_calibration/config/cameras/boards/charuco_9x7_26mm_18p7_ids300_330.yaml \
   --optical-frame right_camera_optical \
   --output ~/camera_calibration/wrist_right_hand_eye_candidate.yaml
 ```
 
-For the fixed `forward` camera, rigidly attach the checkerboard to a gripper and
+For the fixed `forward` camera, rigidly attach the ChArUco board to a gripper and
 pass `--calibration-type eye_to_hand` during capture. The same solver then uses
 the inverted robot poses and outputs `base_link -> forward_camera_optical` plus
 the derived `front_camera -> forward_camera_optical` transform. Never mix a

@@ -1,0 +1,244 @@
+image_width: 640
+image_height: 480
+camera_name: chest
+camera_matrix:
+  rows: 3
+  cols: 3
+  data:
+  - 381.1823204179418
+  - 0.0
+  - 297.247815245148
+  - 0.0
+  - 381.17533892620014
+  - 252.1016815873905
+  - 0.0
+  - 0.0
+  - 1.0
+distortion_model: plumb_bob
+distortion_coefficients:
+  rows: 1
+  cols: 5
+  data:
+  - -0.3554861028931417
+  - 0.1610136588064585
+  - -0.0005277389392677949
+  - -0.00020936367331538395
+  - -0.038092260289965055
+rectification_matrix:
+  rows: 3
+  cols: 3
+  data:
+  - 1.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 1.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 1.0
+projection_matrix:
+  rows: 3
+  cols: 4
+  data:
+  - 381.1823204179418
+  - 0.0
+  - 297.247815245148
+  - 0.0
+  - 0.0
+  - 381.17533892620014
+  - 252.1016815873905
+  - 0.0
+  - 0.0
+  - 0.0
+  - 1.0
+  - 0.0
+frame_id: chest_camera_optical
+status: candidate_intrinsics_requires_review
+calibration_report:
+  calibrated_at: '2026-08-28T07:16:13.068096+00:00'
+  opencv_version: 4.13.0
+  target_type: charuco
+  squares_x: 9
+  squares_y: 7
+  square_length_m: 0.026
+  marker_length_m: 0.0187
+  dictionary: DICT_5X5_1000
+  marker_id_min: 300
+  marker_id_max: 330
+  legacy_pattern: false
+  valid_images: 49
+  rms_px: 0.3915382770209232
+  mean_per_image_rms_px: 0.354364674291281
+  max_per_image_rms_px: 0.6632662358059198
+  per_image_rms_px:
+  - file: chest_0000.jpg
+    points: 40
+    rms_px: 0.43063564189917447
+  - file: chest_0002.jpg
+    points: 27
+    rms_px: 0.27787050428472787
+  - file: chest_0003.jpg
+    points: 35
+    rms_px: 0.31644495192843913
+  - file: chest_0004.jpg
+    points: 48
+    rms_px: 0.5707380996110274
+  - file: chest_0005.jpg
+    points: 42
+    rms_px: 0.560233691514986
+  - file: chest_0006.jpg
+    points: 44
+    rms_px: 0.38165208058939476
+  - file: chest_0007.jpg
+    points: 38
+    rms_px: 0.3692778638994269
+  - file: chest_0008.jpg
+    points: 42
+    rms_px: 0.40038910029464664
+  - file: chest_0009.jpg
+    points: 34
+    rms_px: 0.6632662358059198
+  - file: chest_0010.jpg
+    points: 42
+    rms_px: 0.4988925610887327
+  - file: chest_0011.jpg
+    points: 30
+    rms_px: 0.6148006810969752
+  - file: chest_0012.jpg
+    points: 34
+    rms_px: 0.393747404289522
+  - file: chest_0013.jpg
+    points: 8
+    rms_px: 0.36240621647433946
+  - file: chest_0014.jpg
+    points: 17
+    rms_px: 0.2658509862221914
+  - file: chest_0015.jpg
+    points: 23
+    rms_px: 0.29433119787392903
+  - file: chest_0017.jpg
+    points: 40
+    rms_px: 0.2510924779177966
+  - file: chest_0018.jpg
+    points: 41
+    rms_px: 0.21092130308845036
+  - file: chest_0019.jpg
+    points: 30
+    rms_px: 0.2270408245085826
+  - file: chest_0020.jpg
+    points: 11
+    rms_px: 0.2756683407293547
+  - file: chest_0024.jpg
+    points: 13
+    rms_px: 0.23468516012915697
+  - file: chest_0027.jpg
+    points: 20
+    rms_px: 0.26645020126234087
+  - file: chest_0029.jpg
+    points: 11
+    rms_px: 0.2246957947128442
+  - file: chest_0032.jpg
+    points: 34
+    rms_px: 0.19228504671900146
+  - file: chest_0033.jpg
+    points: 26
+    rms_px: 0.34673110463956724
+  - file: chest_0034.jpg
+    points: 33
+    rms_px: 0.3279173355483932
+  - file: chest_0035.jpg
+    points: 37
+    rms_px: 0.5117070076147087
+  - file: chest_0036.jpg
+    points: 24
+    rms_px: 0.3073622623200104
+  - file: chest_0037.jpg
+    points: 34
+    rms_px: 0.4844873031250039
+  - file: chest_0038.jpg
+    points: 38
+    rms_px: 0.39972236711608095
+  - file: chest_0039.jpg
+    points: 39
+    rms_px: 0.36311020152746637
+  - file: chest_0040.jpg
+    points: 12
+    rms_px: 0.3502139807239417
+  - file: chest_0041.jpg
+    points: 40
+    rms_px: 0.4642899102743077
+  - file: chest_0043.jpg
+    points: 17
+    rms_px: 0.1836931700220593
+  - file: chest_0044.jpg
+    points: 35
+    rms_px: 0.27704925213027515
+  - file: chest_0045.jpg
+    points: 42
+    rms_px: 0.4932751114855158
+  - file: chest_0046.jpg
+    points: 16
+    rms_px: 0.18135274047176073
+  - file: chest_0047.jpg
+    points: 28
+    rms_px: 0.23509704322610986
+  - file: chest_0048.jpg
+    points: 36
+    rms_px: 0.3384215466077448
+  - file: chest_0049.jpg
+    points: 27
+    rms_px: 0.37599285386310916
+  - file: chest_0050.jpg
+    points: 44
+    rms_px: 0.4613297564271592
+  - file: chest_0051.jpg
+    points: 36
+    rms_px: 0.40132210796533185
+  - file: chest_0052.jpg
+    points: 36
+    rms_px: 0.23813328904413095
+  - file: chest_0053.jpg
+    points: 25
+    rms_px: 0.19508276600608582
+  - file: chest_0054.jpg
+    points: 40
+    rms_px: 0.4846948152631698
+  - file: chest_0055.jpg
+    points: 41
+    rms_px: 0.3517069837442229
+  - file: chest_0056.jpg
+    points: 38
+    rms_px: 0.3666750742547514
+  - file: chest_0057.jpg
+    points: 29
+    rms_px: 0.2944323986208708
+  - file: chest_0058.jpg
+    points: 25
+    rms_px: 0.37098066631372856
+  - file: chest_0059.jpg
+    points: 25
+    rms_px: 0.27571162599630133
+  rejected:
+  - file: chest_0001.jpg
+    reason: calibration_target_not_found
+  - file: chest_0016.jpg
+    reason: calibration_target_not_found
+  - file: chest_0021.jpg
+    reason: calibration_target_not_found
+  - file: chest_0022.jpg
+    reason: calibration_target_not_found
+  - file: chest_0023.jpg
+    reason: calibration_target_not_found
+  - file: chest_0025.jpg
+    reason: calibration_target_not_found
+  - file: chest_0026.jpg
+    reason: calibration_target_not_found
+  - file: chest_0028.jpg
+    reason: calibration_target_not_found
+  - file: chest_0030.jpg
+    reason: calibration_target_not_found
+  - file: chest_0031.jpg
+    reason: calibration_target_not_found
+  - file: chest_0042.jpg
+    reason: calibration_target_not_found

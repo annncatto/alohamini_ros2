@@ -16,7 +16,13 @@ install(
     scripts/calibrate_lift_axis
     scripts/capture_camera_calibration
     scripts/capture_hand_eye_samples
+    scripts/generate_charuco_board
     scripts/sync_arm_mapping
+  DESTINATION lib/${PROJECT_NAME}
+)
+
+install(
+  FILES scripts/camera_board.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
@@ -25,6 +31,7 @@ if(BUILD_TESTING)
   ament_add_pytest_test(test_calibrate_arms test/test_calibrate_arms.py)
   ament_add_pytest_test(test_lift_axis_calibration test/test_lift_axis_calibration.py)
   ament_add_pytest_test(test_sync_arm_mapping test/test_sync_arm_mapping.py)
+  ament_add_pytest_test(test_hand_eye_stationary_gate test/test_hand_eye_stationary_gate.py)
 endif()
 
 ament_package()

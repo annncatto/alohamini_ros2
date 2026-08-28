@@ -19,6 +19,8 @@ from .protocol import CameraFrame, parse_camera_message
 
 CAMERA_DEFAULTS = {
     "forward": ("forward_camera_optical", "forward.yaml"),
+    "backward": ("backward_camera_optical", "backward.yaml"),
+    "chest": ("chest_camera_optical", "chest.yaml"),
     "wrist_right": ("right_camera_optical", "wrist_right.yaml"),
     "wrist_left": ("left_camera_optical", "wrist_left.yaml"),
 }
@@ -41,7 +43,9 @@ class AlohaMiniCameraNode(Node):
         self.declare_parameter("max_transport_latency_ms", 250.0)
         self.declare_parameter("poll_rate_hz", 200.0)
         calibration_share = Path(get_package_share_directory("alohamini_calibration"))
-        self.camera_names = tuple(str(name) for name in self.get_parameter("camera_names").value)
+        self.camera_names = tuple(
+            str(name) for name in self.get_parameter("camera_names").value
+        )
         unknown = set(self.camera_names) - set(CAMERA_DEFAULTS)
         if unknown:
             raise ValueError(f"unsupported camera names: {sorted(unknown)}")
@@ -54,26 +58,44 @@ class AlohaMiniCameraNode(Node):
         )
 
         self.camera_info_documents = {}
+        self.frame_ids = {}
         self.raw_publishers = {}
         self.compressed_publishers = {}
         self.info_publishers = {}
         for camera_name in self.camera_names:
             default_frame, default_file = CAMERA_DEFAULTS[camera_name]
             self.declare_parameter(f"{camera_name}.frame_id", default_frame)
-            self.declare_parameter(f"{camera_name}.namespace", f"/alohamini/cameras/{camera_name}")
+            self.declare_parameter(
+                f"{camera_name}.namespace", f"/alohamini/cameras/{camera_name}"
+            )
             self.declare_parameter(f"{camera_name}.camera_info_url", "")
+            frame_id = str(self.get_parameter(f"{camera_name}.frame_id").value)
+            self.frame_ids[camera_name] = frame_id
             configured_path = str(
                 self.get_parameter(f"{camera_name}.camera_info_url").value
             ).strip()
-            info_path = (
-                Path(configured_path).expanduser()
-                if configured_path
-                else calibration_share / "config/cameras/intrinsics" / default_file
+            default_path = (
+                calibration_share / "config/cameras/intrinsics" / default_file
             )
-            document = load_camera_info_document(info_path)
-            document["frame_id"] = str(self.get_parameter(f"{camera_name}.frame_id").value)
+            info_path = (
+                Path(configured_path).expanduser() if configured_path else default_path
+            )
+            if configured_path or info_path.is_file():
+                document = load_camera_info_document(info_path)
+                document["frame_id"] = frame_id
+            else:
+                # Intrinsics must never be fabricated merely to make a new camera
+                # stream available for calibration. Images remain usable, while
+                # CameraInfo is intentionally absent until that camera is solved.
+                document = None
+                self.get_logger().warning(
+                    f"[{camera_name}] no intrinsic calibration at {info_path}; "
+                    "publishing images without CameraInfo"
+                )
             self.camera_info_documents[camera_name] = document
-            namespace = str(self.get_parameter(f"{camera_name}.namespace").value).rstrip("/")
+            namespace = str(
+                self.get_parameter(f"{camera_name}.namespace").value
+            ).rstrip("/")
             if self.publish_raw:
                 self.raw_publishers[camera_name] = self.create_publisher(
                     Image, f"{namespace}/image_raw", 2
@@ -81,9 +103,10 @@ class AlohaMiniCameraNode(Node):
             self.compressed_publishers[camera_name] = self.create_publisher(
                 CompressedImage, f"{namespace}/image_raw/compressed", 2
             )
-            self.info_publishers[camera_name] = self.create_publisher(
-                CameraInfo, f"{namespace}/camera_info", 2
-            )
+            if document is not None:
+                self.info_publishers[camera_name] = self.create_publisher(
+                    CameraInfo, f"{namespace}/camera_info", 2
+                )
 
         self.context_zmq = zmq.Context()
         self.socket = self.context_zmq.socket(zmq.SUB)
@@ -102,9 +125,7 @@ class AlohaMiniCameraNode(Node):
         self.invalid = 0
         self.last_latency_ms = dict.fromkeys(self.camera_names, float("nan"))
         self.last_frame_monotonic = dict.fromkeys(self.camera_names, None)
-        self.diagnostic_pub = self.create_publisher(
-            DiagnosticArray, "/diagnostics", 10
-        )
+        self.diagnostic_pub = self.create_publisher(DiagnosticArray, "/diagnostics", 10)
         poll_rate = float(self.get_parameter("poll_rate_hz").value)
         if poll_rate <= 0.0:
             raise ValueError("poll_rate_hz must be positive")
@@ -147,11 +168,12 @@ class AlohaMiniCameraNode(Node):
         if previous and frame.sequence > previous + 1:
             self.dropped[frame.camera_name] += frame.sequence - previous - 1
         document = self.camera_info_documents[frame.camera_name]
-        validate_frame_against_camera_info(
-            document, frame.camera_name, frame.width, frame.height
-        )
+        if document is not None:
+            validate_frame_against_camera_info(
+                document, frame.camera_name, frame.width, frame.height
+            )
         stamp = self.frame_stamp(frame)
-        frame_id = str(document["frame_id"])
+        frame_id = self.frame_ids[frame.camera_name]
 
         compressed = CompressedImage()
         compressed.header.stamp = stamp
@@ -177,16 +199,22 @@ class AlohaMiniCameraNode(Node):
             raw_publisher.publish(image)
             self.raw_published[frame.camera_name] += 1
 
-        info = CameraInfo()
-        info.header = compressed.header
-        info.height = int(document["image_height"])
-        info.width = int(document["image_width"])
-        info.distortion_model = str(document["distortion_model"])
-        info.d = [float(value) for value in document["distortion_coefficients"]["data"]]
-        info.k = [float(value) for value in document["camera_matrix"]["data"]]
-        info.r = [float(value) for value in document["rectification_matrix"]["data"]]
-        info.p = [float(value) for value in document["projection_matrix"]["data"]]
-        self.info_publishers[frame.camera_name].publish(info)
+        info_publisher = self.info_publishers.get(frame.camera_name)
+        if document is not None and info_publisher is not None:
+            info = CameraInfo()
+            info.header = compressed.header
+            info.height = int(document["image_height"])
+            info.width = int(document["image_width"])
+            info.distortion_model = str(document["distortion_model"])
+            info.d = [
+                float(value) for value in document["distortion_coefficients"]["data"]
+            ]
+            info.k = [float(value) for value in document["camera_matrix"]["data"]]
+            info.r = [
+                float(value) for value in document["rectification_matrix"]["data"]
+            ]
+            info.p = [float(value) for value in document["projection_matrix"]["data"]]
+            info_publisher.publish(info)
 
         receipt_unix_ns = time.time_ns()
         self.last_latency_ms[frame.camera_name] = (
@@ -213,9 +241,17 @@ class AlohaMiniCameraNode(Node):
             if age > 0.5:
                 status.level = DiagnosticStatus.ERROR
                 status.message = "camera stream stale"
-            elif self.timestamp_mode == "host_wall" and abs(latency) > self.max_transport_latency_ms:
+            elif (
+                self.timestamp_mode == "host_wall"
+                and abs(latency) > self.max_transport_latency_ms
+            ):
                 status.level = DiagnosticStatus.WARN
                 status.message = "clock offset or transport latency too large"
+            elif self.camera_info_documents[camera_name] is None:
+                status.level = DiagnosticStatus.WARN
+                status.message = (
+                    "image stream healthy; intrinsic calibration unavailable"
+                )
             else:
                 status.level = DiagnosticStatus.OK
                 status.message = "camera stream healthy"
@@ -226,10 +262,20 @@ class AlohaMiniCameraNode(Node):
                     value=str(self.raw_published[camera_name]),
                 ),
                 KeyValue(key="dropped", value=str(self.dropped[camera_name])),
-                KeyValue(key="last_sequence", value=str(self.last_sequence[camera_name])),
+                KeyValue(
+                    key="last_sequence", value=str(self.last_sequence[camera_name])
+                ),
                 KeyValue(key="age_sec", value=f"{age:.3f}"),
                 KeyValue(key="latency_ms", value=f"{latency:.3f}"),
                 KeyValue(key="timestamp_mode", value=self.timestamp_mode),
+                KeyValue(
+                    key="camera_info",
+                    value=(
+                        "loaded"
+                        if self.camera_info_documents[camera_name] is not None
+                        else "unavailable_calibration_mode"
+                    ),
+                ),
             ]
             array.status.append(status)
         if self.invalid:
