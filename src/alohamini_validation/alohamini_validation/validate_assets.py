@@ -321,6 +321,7 @@ def validate_collision(description: Path, validation: Path) -> None:
     for material in model.findall(".//visual/material"):
         assert material.get("name"), "visual material names must not be empty"
     links = {link.get("name"): link for link in model.findall("link")}
+    joints_by_name = {joint.get("name"): joint for joint in model.findall("joint")}
     arm_collision_meshes = {
         "Base": "arm_base_vhacd.stl",
         "Rotation_Pitch": "rotation_pitch_vhacd.stl",
@@ -328,7 +329,6 @@ def validate_collision(description: Path, validation: Path) -> None:
         "Lower_Arm": "lower_arm_vhacd.stl",
         "Wrist_Pitch_Roll": "wrist_pitch_roll_vhacd.stl",
         "wrist_yaw": "wrist_yaw_vhacd.stl",
-        "Fixed_Jaw": "fixed_jaw_vhacd.stl",
         "camera": "wrist_camera_vhacd.stl",
     }
     for side in ("left", "right"):
@@ -341,10 +341,79 @@ def validate_collision(description: Path, validation: Path) -> None:
                 f"/collision/{collision_name}"
             )
     for side in ("left", "right"):
+        fixed = links[f"{side}_Fixed_Jaw"]
+        fixed_collisions = fixed.findall("collision")
+        fixed_boxes = [
+            collision for collision in fixed_collisions
+            if collision.find("geometry/box") is not None
+        ]
+        fixed_meshes = [
+            collision for collision in fixed_collisions
+            if collision.find("geometry/mesh") is not None
+        ]
+        assert len(fixed_boxes) == int(baseline["fixed_jaw_boxes_per_side"])
+        assert len(fixed_meshes) == int(baseline["fixed_jaw_vhacd_pieces_per_side"])
+        expected_indices = {0, 1, 2, 3, 4, 5, 7}
+        actual_indices = {
+            int(collision.get("name").rsplit("_", 1)[1])
+            for collision in fixed_meshes
+        }
+        assert actual_indices == expected_indices
+        assert all(
+            not collision.find("geometry/mesh").get("filename").endswith(
+                "/collision/fixed_jaw_vhacd.stl"
+            )
+            for collision in fixed_meshes
+        )
+        pad = fixed_boxes[0]
+        assert pad.get("name") == f"{side}_fixed_finger_pad"
+        assert np.allclose(
+            np.fromstring(pad.find("origin").get("xyz"), sep=" "),
+            [-0.015, 0.0, 0.072],
+        )
+        assert np.allclose(
+            np.fromstring(pad.find("geometry/box").get("size"), sep=" "),
+            [0.010, 0.014, 0.064],
+        )
+    for side in ("left", "right"):
         moving = links[f"{side}_Moving_Jaw"]
         assert len(moving.findall("collision/geometry/mesh")) == int(
             baseline["moving_jaw_vhacd_pieces_per_side"]
         )
+        moving_boxes = [
+            collision for collision in moving.findall("collision")
+            if collision.find("geometry/box") is not None
+        ]
+        assert len(moving_boxes) == int(baseline["moving_jaw_boxes_per_side"])
+        pad = moving_boxes[0]
+        assert pad.get("name") == f"{side}_moving_finger_pad"
+        pad_xyz = np.fromstring(pad.find("origin").get("xyz"), sep=" ")
+        pad_rpy = np.fromstring(pad.find("origin").get("rpy"), sep=" ")
+        assert np.allclose(
+            pad_xyz,
+            [-0.0012969999878772, -0.050369580583936, 0.0033063194616967],
+        )
+        assert np.allclose(pad_rpy, [-math.pi / 2.0, 0.0, math.pi - 0.03])
+        assert np.allclose(
+            np.fromstring(pad.find("geometry/box").get("size"), sep=" "),
+            [0.010, 0.014, 0.064],
+        )
+
+        gripper_joint = joints_by_name[f"{side}_gripper"]
+        joint_at_calibration = origin_transform(gripper_joint)
+        axis = np.fromstring(gripper_joint.find("axis").get("xyz"), sep=" ")
+        joint_at_calibration[:3, :3] = (
+            joint_at_calibration[:3, :3]
+            @ axis_angle(axis, 0.03)
+        )
+        moving_pad = origin_transform(pad)
+        pad_in_fixed = joint_at_calibration @ moving_pad
+        assert np.allclose(pad_in_fixed[:3, :3], np.eye(3), atol=1e-12)
+        assert np.allclose(pad_in_fixed[:3, 3], [0.020, 0.0, 0.072], atol=1e-12)
+        fixed_inner_x = -0.015 + 0.010 / 2.0
+        moving_inner_x = pad_in_fixed[0, 3] - 0.010 / 2.0
+        assert math.isclose(moving_inner_x - fixed_inner_x, 0.025, abs_tol=1e-12)
+        assert math.isclose((moving_inner_x + fixed_inner_x) / 2.0, 0.0025, abs_tol=1e-12)
     assert not links["base_link"].findall("visual")
     assert not links["base_link"].findall("collision")
     assert links["base_link"].find("inertial") is None
@@ -382,6 +451,24 @@ def validate_lidar_three_wheel(description: Path) -> None:
     expected = load_yaml(description / "config/three_wheel_base.yaml")
     assert expected["status"] == "integrated_current_cad_wheels"
     assert expected["integration_constraints"]["do_not_attach_both_wheel_variants"] is True
+    kinematics = expected["kinematics"]
+    assert kinematics["command_frame"] == "base_link"
+    assert kinematics["convention"] == "rep103_x_forward_y_left_z_up_yaw_ccw"
+    assert kinematics["body_twist_order"] == ["vx_m_s", "vy_m_s", "yaw_rate_rad_s"]
+    assert kinematics["wheel_order"] == [
+        "wheel1_joint",
+        "wheel2_joint",
+        "wheel3_joint",
+    ]
+    angles = np.deg2rad(kinematics["rolling_direction_angles_base_link_deg"])
+    base_radius = float(expected["geometry_authority"]["base_radius_m"])
+    expected_matrix = np.column_stack(
+        (-np.cos(angles), -np.sin(angles), np.full(3, base_radius))
+    )
+    matrix = np.asarray(
+        kinematics["body_twist_to_wheel_linear_matrix_m"], dtype=float
+    )
+    assert np.allclose(matrix, expected_matrix, atol=1e-9)
     for wheel_name, values in expected["legacy_source_wheels"].items():
         joint = joints[f"{wheel_name}_joint"]
         assert joint.get("type") == "continuous"
@@ -402,13 +489,30 @@ def validate_lidar_three_wheel(description: Path) -> None:
 
     integrated = ET.parse(description / "urdf/alohamini2pro_moveit.urdf").getroot()
     integrated_joints = {joint.get("name"): joint for joint in integrated.findall("joint")}
-    for wheel_name, values in expected["authoritative_wheels"].items():
+    base_to_cad = rpy_matrix(
+        integrated_joints["base_cad_joint"].find("origin").get("rpy")
+    )
+    for index, (wheel_name, values) in enumerate(
+        expected["authoritative_wheels"].items()
+    ):
         joint = integrated_joints[f"{wheel_name}_joint"]
         assert joint.find("parent").get("link") == "base_cad_link"
         origin = joint.find("origin")
         assert np.allclose(np.fromstring(origin.get("xyz"), sep=" "), values["position_xyz_m"])
         assert np.allclose(np.fromstring(origin.get("rpy"), sep=" "), values["orientation_rpy_rad"])
         assert np.allclose(np.fromstring(joint.find("axis").get("xyz"), sep=" "), values["axis_xyz"])
+        joint_to_cad = rpy_matrix(origin.get("rpy"))
+        local_axis = np.fromstring(joint.find("axis").get("xyz"), sep=" ")
+        axis_in_cad = joint_to_cad @ local_axis
+        rolling_in_cad = np.cross([0.0, 0.0, 1.0], axis_in_cad)
+        rolling_in_base = base_to_cad @ (
+            rolling_in_cad / np.linalg.norm(rolling_in_cad)
+        )
+        configured_rolling = np.asarray(
+            [math.cos(angles[index]), math.sin(angles[index]), 0.0]
+        )
+        assert np.allclose(rolling_in_base, configured_rolling, atol=2e-4)
+        assert np.allclose(matrix[index, :2], -rolling_in_base[:2], atol=2e-4)
 
 
 def main() -> None:

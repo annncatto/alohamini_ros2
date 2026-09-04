@@ -22,7 +22,29 @@ def test_wheel_velocity_round_trip_order():
     wheels = wheel_velocity_from_body(velocity)
     assert len(wheels) == 3
     assert all(math.isfinite(value) for value in wheels)
-    assert wheels[0] != wheels[1] != wheels[2]
+    radius, base_radius = 0.063, 0.195
+    expected = []
+    for angle_deg in (150.0, -90.0, 30.0):
+        angle = math.radians(angle_deg)
+        expected.append(
+            (
+                -math.cos(angle) * velocity.x
+                - math.sin(angle) * velocity.y
+                + base_radius * velocity.yaw
+            )
+            / radius
+        )
+    assert wheels == pytest.approx(expected)
+
+    # REP-103 base_link sign contract: +x produces opposite side-wheel
+    # rotation, +y drives the back wheel positive, and +yaw drives all three
+    # wheel joints positive about their URDF axes.
+    forward = wheel_velocity_from_body(BodyVelocity(x=0.1))
+    left = wheel_velocity_from_body(BodyVelocity(y=0.1))
+    ccw = wheel_velocity_from_body(BodyVelocity(yaw=0.2))
+    assert forward[0] > 0 and forward[1] == pytest.approx(0.0) and forward[2] < 0
+    assert left[0] < 0 and left[1] > 0 and left[2] < 0
+    assert all(value > 0 for value in ccw)
 
 
 def test_host_normalization_to_reference_urdf():

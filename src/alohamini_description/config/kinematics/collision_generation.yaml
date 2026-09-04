@@ -39,6 +39,33 @@ arm_link_vhacd:
     fixed_jaw: 8
     wrist_camera: 2
   status: generated_and_cad_home_reviewed
+  fixed_jaw_loading_policy:
+    combined_mesh: fixed_jaw_vhacd.stl
+    combined_mesh_loaded: false
+    separately_loaded_pieces: [0, 1, 2, 3, 4, 5, 7]
+    replaced_piece: 6
+    replacement:
+      type: box
+      name: fixed_finger_pad
+      origin_xyz_m: [-0.015, 0.0, 0.072]
+      size_xyz_m: [0.010, 0.014, 0.064]
+      inner_face_x_m: -0.010
+    reason: Loading all disconnected pieces through one mesh lets some consumers re-convexify the complete Fixed_Jaw and close the grasp aperture. Piece 06 also expands into the inner contact face, so the reviewed planar pad replaces it and matches the distal visual section.
+  moving_jaw_loading_policy:
+    separately_loaded_vhacd_pieces: [1, 2, 3, 4, 5]
+    replaced_piece: 0
+    replacement:
+      type: box
+      name: moving_finger_pad
+      origin_xyz_m: [-0.0012969999878772, -0.050369580583936, 0.0033063194616967]
+      origin_rpy_rad: [-1.5707963267949, 0.0, 3.11159265358979]
+      size_xyz_m: [0.010, 0.014, 0.064]
+      calibration_q_rad: 0.03
+      center_in_fixed_jaw_m: [0.020, 0.0, 0.072]
+      inner_face_x_in_fixed_jaw_m: 0.015
+    aperture_at_calibration_q_m: 0.025
+    aperture_center_x_m: 0.0025
+    reason: The distal VHACD hull protrudes about 1 mm beyond the visual contact face. The explicit pad makes the q-to-aperture contract identical for ROS, Gazebo, and downstream simulators.
   stowed_pose_policy:
     source: ../../../alohamini_calibration/config/hardware/arm_home.yaml
     note: Installed encoder Home is mapped to the matching collision-free CAD Home; no additional ACM exclusions are used.

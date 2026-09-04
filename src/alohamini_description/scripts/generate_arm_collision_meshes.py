@@ -49,9 +49,44 @@ def main() -> None:
         type=Path,
         default=PACKAGE_ROOT / "config" / "kinematics" / "arm_collision_report.json",
     )
+    parser.add_argument(
+        "--split-existing-fixed-jaw",
+        action="store_true",
+        help=(
+            "split the reviewed combined fixed_jaw_vhacd.stl into its existing "
+            "connected convex components without running VHACD"
+        ),
+    )
     args = parser.parse_args()
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+    if args.split_existing_fixed_jaw:
+        destination = OUTPUT_DIR / "fixed_jaw_vhacd.stl"
+        pieces = list(
+            trimesh.load_mesh(destination, process=True).split(only_watertight=False)
+        )
+        pieces.sort(key=lambda part: tuple(np.round(part.centroid[[1, 2, 0]], 9)))
+        if len(pieces) != 8:
+            raise RuntimeError(
+                f"expected 8 reviewed Fixed_Jaw components, found {len(pieces)}"
+            )
+        for stale in OUTPUT_DIR.glob("fixed_jaw_vhacd_*.stl"):
+            stale.unlink()
+        piece_files = []
+        for index, piece in enumerate(pieces):
+            piece_path = OUTPUT_DIR / f"fixed_jaw_vhacd_{index:02d}.stl"
+            piece.export(piece_path, file_type="stl")
+            piece_files.append({"file": piece_path.name, "sha256": sha256(piece_path)})
+
+        report = json.loads(args.report_json.read_text(encoding="utf-8"))
+        fixed_report = report["links"]["fixed_jaw"]
+        fixed_report["piece_files"] = piece_files
+        args.report_json.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+        print(f"split {destination.name}: {len(pieces)} existing convex components")
+        print(f"wrote {args.report_json}")
+        return
+
     report = {"schema_version": 1, "generator": "trimesh_vhacdx", "links": {}}
 
     for slug, (source_name, max_hulls) in LINKS.items():
@@ -85,6 +120,22 @@ def main() -> None:
         for stale in OUTPUT_DIR.glob(f"{slug}_vhacd_*.stl"):
             stale.unlink()
 
+        piece_files = []
+        # Fixed_Jaw is deeply concave: a single collision mesh containing all
+        # disconnected VHACD pieces may be re-convexified by downstream
+        # consumers and bridge the open gripper aperture.  Export its convex
+        # components separately so URDF/SRDF consumers retain the decomposition.
+        if slug == "fixed_jaw":
+            for index, piece in enumerate(pieces):
+                piece_path = OUTPUT_DIR / f"{slug}_vhacd_{index:02d}.stl"
+                piece.export(piece_path, file_type="stl")
+                piece_files.append(
+                    {
+                        "file": piece_path.name,
+                        "sha256": sha256(piece_path),
+                    }
+                )
+
         report["links"][slug] = {
             "source": f"meshes/visual/{source_name}",
             "source_sha256": sha256(source),
@@ -98,6 +149,7 @@ def main() -> None:
             "combined_faces": int(len(combined.faces)),
             "piece_count": len(records),
             "piece_volume_total_cm3": float(sum(item["volume_cm3"] for item in records)),
+            "piece_files": piece_files,
             "pieces": records,
         }
         print(f"generated {destination.name}: {len(records)} hulls", flush=True)

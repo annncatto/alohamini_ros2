@@ -821,18 +821,20 @@
           rgba="0.752941176470588 0.752941176470588 0.752941176470588 1" />
       </material>
     </visual>
-    <!-- Do not use one convex hull for the complete Fixed_Jaw mesh: it fills
-         the open space between the fingers and reports contacts about 25 mm
-         away from the visible fixed pad. These two provisional boxes separate
-         the wrist/palm body from the slender fixed finger. -->
-    <collision name="left_fixed_jaw_palm">
-      <origin xyz="-0.0025 0.002 0.011" rpy="0 0 0" />
-      <geometry>
-        <box size="0.065 0.052 0.058" />
-      </geometry>
-    </collision>
+    <!-- Load the reviewed Fixed_Jaw VHACD components independently. Never
+         load fixed_jaw_vhacd.stl as one collision: consumers may take a new
+         convex hull across its disconnected pieces and close the grasp gap.
+         Piece 06 is replaced by the measured planar finger pad because its
+         convex hull expands the inner contact face by roughly 4 mm. -->
+    <collision name="left_fixed_jaw_vhacd_00"><geometry><mesh filename="package://alohamini_description/meshes/collision/fixed_jaw_vhacd_00.stl" /></geometry></collision>
+    <collision name="left_fixed_jaw_vhacd_01"><geometry><mesh filename="package://alohamini_description/meshes/collision/fixed_jaw_vhacd_01.stl" /></geometry></collision>
+    <collision name="left_fixed_jaw_vhacd_02"><geometry><mesh filename="package://alohamini_description/meshes/collision/fixed_jaw_vhacd_02.stl" /></geometry></collision>
+    <collision name="left_fixed_jaw_vhacd_03"><geometry><mesh filename="package://alohamini_description/meshes/collision/fixed_jaw_vhacd_03.stl" /></geometry></collision>
+    <collision name="left_fixed_jaw_vhacd_04"><geometry><mesh filename="package://alohamini_description/meshes/collision/fixed_jaw_vhacd_04.stl" /></geometry></collision>
+    <collision name="left_fixed_jaw_vhacd_05"><geometry><mesh filename="package://alohamini_description/meshes/collision/fixed_jaw_vhacd_05.stl" /></geometry></collision>
+    <collision name="left_fixed_jaw_vhacd_07"><geometry><mesh filename="package://alohamini_description/meshes/collision/fixed_jaw_vhacd_07.stl" /></geometry></collision>
     <collision name="left_fixed_finger_pad">
-      <origin xyz="-0.019 0 0.072" rpy="0 0 0" />
+      <origin xyz="-0.015 0 0.072" rpy="0 0 0" />
       <geometry>
         <box size="0.010 0.014 0.064" />
       </geometry>
@@ -886,10 +888,12 @@
           rgba="0.752941176470588 0.752941176470588 0.752941176470588 1" />
       </material>
     </visual>
-    <!-- Six-piece VHACD approximation. The previous single convex hull had
-         2.11x the visual mesh volume and bridged empty space between the
-         distal finger and proximal linkage. -->
-    <collision name="left_moving_jaw_vhacd_00"><geometry><mesh filename="package://alohamini_description/meshes/collision/moving_jaw_vhacd_00.stl" /></geometry></collision>
+    <!-- The distal pad is calibrated to a 25 mm aperture at q=0.03 rad.
+         The remaining VHACD pieces retain the proximal linkage envelope. -->
+    <collision name="left_moving_finger_pad">
+      <origin xyz="-0.0012969999878772 -0.050369580583936 0.0033063194616967" rpy="-1.5707963267949 0 3.11159265358979" />
+      <geometry><box size="0.010 0.014 0.064" /></geometry>
+    </collision>
     <collision name="left_moving_jaw_vhacd_01"><geometry><mesh filename="package://alohamini_description/meshes/collision/moving_jaw_vhacd_01.stl" /></geometry></collision>
     <collision name="left_moving_jaw_vhacd_02"><geometry><mesh filename="package://alohamini_description/meshes/collision/moving_jaw_vhacd_02.stl" /></geometry></collision>
     <collision name="left_moving_jaw_vhacd_03"><geometry><mesh filename="package://alohamini_description/meshes/collision/moving_jaw_vhacd_03.stl" /></geometry></collision>
@@ -1317,14 +1321,16 @@
           rgba="0.752941176470588 0.752941176470588 0.752941176470588 1" />
       </material>
     </visual>
-    <collision name="right_fixed_jaw_palm">
-      <origin xyz="-0.0025 0.002 0.011" rpy="0 0 0" />
-      <geometry>
-        <box size="0.065 0.052 0.058" />
-      </geometry>
-    </collision>
+    <!-- Same non-mirrored Fixed_Jaw decomposition as the left side. -->
+    <collision name="right_fixed_jaw_vhacd_00"><geometry><mesh filename="package://alohamini_description/meshes/collision/fixed_jaw_vhacd_00.stl" /></geometry></collision>
+    <collision name="right_fixed_jaw_vhacd_01"><geometry><mesh filename="package://alohamini_description/meshes/collision/fixed_jaw_vhacd_01.stl" /></geometry></collision>
+    <collision name="right_fixed_jaw_vhacd_02"><geometry><mesh filename="package://alohamini_description/meshes/collision/fixed_jaw_vhacd_02.stl" /></geometry></collision>
+    <collision name="right_fixed_jaw_vhacd_03"><geometry><mesh filename="package://alohamini_description/meshes/collision/fixed_jaw_vhacd_03.stl" /></geometry></collision>
+    <collision name="right_fixed_jaw_vhacd_04"><geometry><mesh filename="package://alohamini_description/meshes/collision/fixed_jaw_vhacd_04.stl" /></geometry></collision>
+    <collision name="right_fixed_jaw_vhacd_05"><geometry><mesh filename="package://alohamini_description/meshes/collision/fixed_jaw_vhacd_05.stl" /></geometry></collision>
+    <collision name="right_fixed_jaw_vhacd_07"><geometry><mesh filename="package://alohamini_description/meshes/collision/fixed_jaw_vhacd_07.stl" /></geometry></collision>
     <collision name="right_fixed_finger_pad">
-      <origin xyz="-0.019 0 0.072" rpy="0 0 0" />
+      <origin xyz="-0.015 0 0.072" rpy="0 0 0" />
       <geometry>
         <box size="0.010 0.014 0.064" />
       </geometry>
@@ -1378,7 +1384,10 @@
           rgba="0.752941176470588 0.752941176470588 0.752941176470588 1" />
       </material>
     </visual>
-    <collision name="right_moving_jaw_vhacd_00"><geometry><mesh filename="package://alohamini_description/meshes/collision/moving_jaw_vhacd_00.stl" /></geometry></collision>
+    <collision name="right_moving_finger_pad">
+      <origin xyz="-0.0012969999878772 -0.050369580583936 0.0033063194616967" rpy="-1.5707963267949 0 3.11159265358979" />
+      <geometry><box size="0.010 0.014 0.064" /></geometry>
+    </collision>
     <collision name="right_moving_jaw_vhacd_01"><geometry><mesh filename="package://alohamini_description/meshes/collision/moving_jaw_vhacd_01.stl" /></geometry></collision>
     <collision name="right_moving_jaw_vhacd_02"><geometry><mesh filename="package://alohamini_description/meshes/collision/moving_jaw_vhacd_02.stl" /></geometry></collision>
     <collision name="right_moving_jaw_vhacd_03"><geometry><mesh filename="package://alohamini_description/meshes/collision/moving_jaw_vhacd_03.stl" /></geometry></collision>

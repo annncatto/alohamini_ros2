@@ -19,6 +19,28 @@ geometry_authority:
   base_radius_m: 0.195
   runtime_reference: /home/anncatto/lerobot_alohamini/src/lerobot/robots/alohamini/model_specs.py
 
+# Public chassis commands always use base_link / REP-103, never the CAD frame:
+# +x forward, +y left, +yaw counter-clockwise about +z.  The CAD geometry is
+# mounted at +90 deg below base_link, so the three rolling directions expressed
+# in base_link are 150, -90 and 30 degrees.  With positive wheel rotation
+# defined by each URDF joint axis, no-slip kinematics are
+#
+#   wheel_rad_s = body_twist_to_wheel_linear_matrix_m @ [vx, vy, wz]
+#                 / wheel_radius_m
+#
+# The third column already contains the 0.195 m chassis radius.
+kinematics:
+  command_frame: base_link
+  convention: rep103_x_forward_y_left_z_up_yaw_ccw
+  body_twist_order: [vx_m_s, vy_m_s, yaw_rate_rad_s]
+  wheel_order: [wheel1_joint, wheel2_joint, wheel3_joint]
+  positive_rotation: urdf_joint_axis_right_hand_rule
+  rolling_direction_angles_base_link_deg: [150.0, -90.0, 30.0]
+  body_twist_to_wheel_linear_matrix_m:
+    - [0.8660254037844386, -0.5, 0.195]
+    - [0.0, 1.0, 0.195]
+    - [-0.8660254037844386, -0.5, 0.195]
+
 legacy_navigation_reference:
   wheel_radius_m: 0.05
   base_radius_m: 0.125

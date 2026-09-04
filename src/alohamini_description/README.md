@@ -30,9 +30,17 @@ The current arm collision baseline uses VHACD meshes in the same link frames as
 the visual CAD. It replaces the former single, 2 mm padded AABB per rigid arm
 link so compact physical poses can be checked without AABB-filled empty space.
 Because the left/right CAD sources are byte-identical, both sides share one
-generated mesh per link type. Moving jaws retain their reviewed six-piece
-VHACD model. Generation parameters and per-hull measurements are recorded in
-`config/kinematics/arm_collision_report.json`.
+generated mesh per link type. Each moving jaw retains five proximal VHACD
+pieces and uses a calibrated planar box for the distal contact pad. Each fixed
+jaw loads seven VHACD pieces separately and replaces the expanded contact piece
+with its calibrated planar pad. Generation parameters and per-hull measurements
+are recorded in `config/kinematics/arm_collision_report.json`.
+
+The collision generation and visual audit scripts are offline development
+tools, not runtime nodes. Run them in an environment providing `numpy`,
+`trimesh`, `vhacdx`, and `matplotlib`; the local `maniskill` Conda environment
+provides the geometry-audit dependencies. These optional tools are therefore
+not runtime dependencies of `alohamini_description`.
 
 The lidar repository's older approximately 99 mm wheel component is retained
 only as a provenance/visual comparison and can be previewed with:

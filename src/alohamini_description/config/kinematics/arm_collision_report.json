@@ -963,6 +963,40 @@
             ]
           ]
         }
+      ],
+      "piece_files": [
+        {
+          "file": "fixed_jaw_vhacd_00.stl",
+          "sha256": "9e5f5e412cdd63ee0a4431eea23314f1a66b9f626f5ee442a3748f4453487e60"
+        },
+        {
+          "file": "fixed_jaw_vhacd_01.stl",
+          "sha256": "d9146778afb8ae9243a0833683a1bbe60c55d47318dd3530461139c510915d83"
+        },
+        {
+          "file": "fixed_jaw_vhacd_02.stl",
+          "sha256": "848a3aa72b1feb9ffd8a9648690f12bef79e1c1269f80b41e07fbec383388bcb"
+        },
+        {
+          "file": "fixed_jaw_vhacd_03.stl",
+          "sha256": "6db59d5c81e0ea0f24ded17909048611cb53500a9d9c8f11b6ac0761b0aa9561"
+        },
+        {
+          "file": "fixed_jaw_vhacd_04.stl",
+          "sha256": "3864d3cf2c24436c01a5da33615dc02a16507af31acb96df055d7ad7885b1132"
+        },
+        {
+          "file": "fixed_jaw_vhacd_05.stl",
+          "sha256": "9823ad92f3f538cfcd824295b34d2106b1394a133e2e32b6a7563209fec70b88"
+        },
+        {
+          "file": "fixed_jaw_vhacd_06.stl",
+          "sha256": "6e8d218e3ba94890204a65660a6c848c5ac47716d49abe55b7bbccd35fec5325"
+        },
+        {
+          "file": "fixed_jaw_vhacd_07.stl",
+          "sha256": "1e8a16cd66585d9431bc7d8ed484d67131386d7a30425259087cc98a5618314f"
+        }
       ]
     },
     "wrist_camera": {

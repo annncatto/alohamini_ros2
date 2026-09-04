@@ -148,14 +148,16 @@
         <color rgba="0.752941176470588 0.752941176470588 0.752941176470588 1" />
       </material>
     </visual>
-    <collision name="right_fixed_jaw_palm">
-      <origin xyz="-0.0025 0.002 0.011" rpy="0 0 0" />
-      <geometry>
-        <box size="0.065 0.052 0.058" />
-      </geometry>
-    </collision>
+    <!-- Keep VHACD pieces separate so the Fixed_Jaw grasp gap stays open. -->
+    <collision name="right_fixed_jaw_vhacd_00"><geometry><mesh filename="package://alohamini_description/meshes/collision/fixed_jaw_vhacd_00.stl" /></geometry></collision>
+    <collision name="right_fixed_jaw_vhacd_01"><geometry><mesh filename="package://alohamini_description/meshes/collision/fixed_jaw_vhacd_01.stl" /></geometry></collision>
+    <collision name="right_fixed_jaw_vhacd_02"><geometry><mesh filename="package://alohamini_description/meshes/collision/fixed_jaw_vhacd_02.stl" /></geometry></collision>
+    <collision name="right_fixed_jaw_vhacd_03"><geometry><mesh filename="package://alohamini_description/meshes/collision/fixed_jaw_vhacd_03.stl" /></geometry></collision>
+    <collision name="right_fixed_jaw_vhacd_04"><geometry><mesh filename="package://alohamini_description/meshes/collision/fixed_jaw_vhacd_04.stl" /></geometry></collision>
+    <collision name="right_fixed_jaw_vhacd_05"><geometry><mesh filename="package://alohamini_description/meshes/collision/fixed_jaw_vhacd_05.stl" /></geometry></collision>
+    <collision name="right_fixed_jaw_vhacd_07"><geometry><mesh filename="package://alohamini_description/meshes/collision/fixed_jaw_vhacd_07.stl" /></geometry></collision>
     <collision name="right_fixed_finger_pad">
-      <origin xyz="-0.019 0 0.072" rpy="0 0 0" />
+      <origin xyz="-0.015 0 0.072" rpy="0 0 0" />
       <geometry>
         <box size="0.010 0.014 0.064" />
       </geometry>
@@ -176,9 +178,10 @@
         <color rgba="0.752941176470588 0.752941176470588 0.752941176470588 1" />
       </material>
     </visual>
-    <collision name="right_moving_jaw_vhacd_00">
+    <collision name="right_moving_finger_pad">
+      <origin xyz="-0.0012969999878772 -0.050369580583936 0.0033063194616967" rpy="-1.5707963267949 0 3.11159265358979" />
       <geometry>
-        <mesh filename="package://alohamini_description/meshes/collision/moving_jaw_vhacd_00.stl" />
+        <box size="0.010 0.014 0.064" />
       </geometry>
     </collision>
     <collision name="right_moving_jaw_vhacd_01">
