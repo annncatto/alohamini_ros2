@@ -2,9 +2,9 @@
 
 ## Authority and bus ownership
 
-`~/lerobot_alohamini` contains the currently verified AlohaMini Runtime/Host.
-It owns physical motor serial ports, executes commands, reads state, and
-enforces the watchdog.
+`~/lerobot_alohamini` contains the currently verified AlohaMini
+Runtime/Host. It owns physical motor serial ports, executes commands, reads
+state, and enforces the watchdog.
 
 `~/alohamini_lidar_imu` contains a ROS bridge and a separate experimental C++
 `ros2_control` base backend. The C++ backend is an alternative hardware

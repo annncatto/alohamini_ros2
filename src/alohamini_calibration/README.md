@@ -200,9 +200,10 @@ The output remains a candidate until RViz and collision validation pass. Load a
 reviewed profile without modifying the CAD/URDF definition:
 
 ```bash
-ros2 launch alohamini_moveit_config hardware_execution.launch.py \
+ros2 launch alohamini_bringup hardware.launch.py \
   host:=192.168.3.73 \
-  arm_mapping_dir:=$HOME/.config/alohamini/192.168.3.73
+  arm_mapping_dir:=$HOME/.config/alohamini/192.168.3.73 \
+  enable_moveit:=true use_rviz:=true
 ```
 
 The bridge remains read-only until `command_enable` is explicitly called.
