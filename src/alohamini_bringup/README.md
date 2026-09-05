@@ -28,6 +28,12 @@ ros2 launch alohamini_bringup hardware.launch.py host:=ROBOT_IP \
   enable_moveit:=true enable_joycon:=true use_rviz:=true
 ```
 
+Normal runtime stamps both camera images and measured joints at ROS receipt
+time, so MoveIt and stop-and-observe perception do not depend on the Pi wall
+clock. Timestamp-matched hand-eye capture is the exception: synchronize both
+computers and launch with `camera_timestamp_mode:=host_wall` and
+`state_timestamp_mode:=host_wall`.
+
 The component launches in `alohamini_moveit_config` and
 `alohamini_joycon_teleop` intentionally do not start a Bridge or
 `robot_state_publisher`. Do not start two Bringup graphs, and do not run another

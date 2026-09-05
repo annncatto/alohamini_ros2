@@ -26,9 +26,13 @@ Diagnostics report `camera_info=unavailable_calibration_mode` until that
 camera's reviewed intrinsic YAML is installed. An explicitly configured but
 invalid `camera_info_url` remains a startup error.
 
+`timestamp_mode:=receipt` is the runtime default, keeping image and joint-state
+timestamps on the ROS computer's clock without requiring the Pi wall clock to
+match. Receipt time includes camera transport latency, so use it for preview or
+stop-and-observe perception rather than moving-camera temporal calibration.
 `timestamp_mode:=host_wall` preserves the Host capture time and requires the Pi
-and ROS computer clocks to be synchronized. Use `receipt` only for preview and
-diagnostics; it is not accepted for hand-eye calibration.
+and ROS computer clocks to be synchronized; hand-eye calibration explicitly
+uses this mode.
 
 Accepted hand-eye files can publish optical TFs explicitly:
 

@@ -4,7 +4,7 @@ alohamini_camera:
     port: 5557
     camera_names: [forward, backward, chest, wrist_left, wrist_right]
     publish_raw: true
-    timestamp_mode: host_wall
+    timestamp_mode: receipt
     max_transport_latency_ms: 250.0
     poll_rate_hz: 200.0
     forward:

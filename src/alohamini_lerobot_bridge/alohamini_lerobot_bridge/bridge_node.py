@@ -25,6 +25,7 @@ from trajectory_msgs.msg import JointTrajectoryPoint
 
 from .control import CommandComposer, TerminalState, TrajectorySample
 from .protocol import (
+    ARM_JOINTS,
     BodyVelocity,
     JointMapper,
     ZmqHostTransport,
@@ -49,6 +50,7 @@ class AlohaMiniLeRobotBridge(Node):
             "rate_hz": 50.0,
             "observation_timeout_sec": 0.5,
             "request_timeout_sec": 1.0,
+            "max_state_response_age_sec": 0.25,
             "command_timeout_sec": 0.5,
             "trajectory_hold_sec": 0.25,
             "arm_path_tolerance_rad": 0.35,
@@ -83,7 +85,9 @@ class AlohaMiniLeRobotBridge(Node):
             "wheel_radius": 0.063,
             "base_radius": 0.195,
             "arm_mapping_dir": "",
-            "state_timestamp_mode": "host_wall",
+            # MoveIt validates state freshness against this ROS computer's
+            # clock. Host capture time remains an explicit calibration mode.
+            "state_timestamp_mode": "receipt",
             "max_clock_offset_ms": 250.0,
         }
         for name, value in defaults.items():
@@ -109,17 +113,38 @@ class AlohaMiniLeRobotBridge(Node):
         ) as stream:
             lift_calibration = yaml.safe_load(stream)
         self.mapper = JointMapper(joint_calibrations, lift_calibration)
+        self.expected_measured_joints = {
+            f"{side}_{'wrist_yaw_joint' if joint == 'wrist_yaw' else joint}"
+            for side in ("left", "right")
+            for joint in ARM_JOINTS
+        }
+        self.expected_measured_joints.add("vertical_move")
+
+        self.state_timestamp_mode = str(
+            self.get_parameter("state_timestamp_mode").value
+        )
+        if self.state_timestamp_mode not in ("host_wall", "receipt"):
+            raise ValueError("state_timestamp_mode must be host_wall or receipt")
+
+        self.obs_timeout = float(self.get_parameter("observation_timeout_sec").value)
+        self.request_timeout = float(self.get_parameter("request_timeout_sec").value)
+        max_state_response_age = float(
+            self.get_parameter("max_state_response_age_sec").value
+        )
+        if max_state_response_age > self.request_timeout:
+            raise ValueError(
+                "max_state_response_age_sec must not exceed request_timeout_sec"
+            )
 
         self.transport = ZmqHostTransport(
             str(self.get_parameter("host").value),
             int(self.get_parameter("command_port").value),
             int(self.get_parameter("observation_port").value),
             int(self.get_parameter("request_window").value),
+            max_state_response_age,
         )
         self.expected_model = str(self.get_parameter("expected_robot_model").value)
         self.require_model_match = bool(self.get_parameter("require_model_match").value)
-        self.obs_timeout = float(self.get_parameter("observation_timeout_sec").value)
-        self.request_timeout = float(self.get_parameter("request_timeout_sec").value)
         self.command_timeout = float(self.get_parameter("command_timeout_sec").value)
         # Port 5555 has no lease protocol.  Never claim it at startup: a fresh
         # observation plus an explicit service call is required every run.
@@ -164,6 +189,9 @@ class AlohaMiniLeRobotBridge(Node):
         self.invalid_observations = 0
         self.last_observation_error = ""
         self.last_state_clock_offset_ms = math.nan
+        self.missing_measured_joints: list[str] = sorted(
+            self.expected_measured_joints
+        )
         self.observation_count = 0
         self.command_count = 0
         self.last_disabled_arm_jog_warning = 0.0
@@ -445,6 +473,9 @@ class AlohaMiniLeRobotBridge(Node):
         self.robot_metadata = metadata
         self.latest_observation = observation
         self.latest_positions = positions
+        self.missing_measured_joints = sorted(
+            self.expected_measured_joints.difference(positions)
+        )
         self.last_observation_monotonic = time.monotonic()
         self.observation_count += 1
         self.last_observation_error = ""
@@ -477,12 +508,9 @@ class AlohaMiniLeRobotBridge(Node):
         self.measured_joint_pub.publish(message)
 
     def observation_stamp(self, observation: dict) -> TimeMsg:
-        mode = str(self.get_parameter("state_timestamp_mode").value)
-        if mode == "receipt":
+        if self.state_timestamp_mode == "receipt":
             self.last_state_clock_offset_ms = math.nan
             return self.get_clock().now().to_msg()
-        if mode != "host_wall":
-            raise ValueError("state_timestamp_mode must be host_wall or receipt")
         timing = observation.get("_host_timing")
         unix_ns = timing.get("state_sample_unix_ns") if isinstance(timing, dict) else None
         if isinstance(unix_ns, bool) or not isinstance(unix_ns, (int, float)):
@@ -852,6 +880,9 @@ class AlohaMiniLeRobotBridge(Node):
         elif self.require_model_match and not self.model_matches():
             status.level = DiagnosticStatus.ERROR
             status.message = "Host robot model mismatch"
+        elif self.missing_measured_joints:
+            status.level = DiagnosticStatus.ERROR
+            status.message = "Host observation missing MoveIt joint state"
         elif math.isfinite(self.last_state_clock_offset_ms) and abs(
             self.last_state_clock_offset_ms
         ) > float(self.get_parameter("max_clock_offset_ms").value):
@@ -893,10 +924,26 @@ class AlohaMiniLeRobotBridge(Node):
             KeyValue(key="observation_count", value=str(self.observation_count)),
             KeyValue(key="invalid_observations", value=str(self.invalid_observations)),
             KeyValue(key="last_observation_error", value=self.last_observation_error),
+            KeyValue(
+                key="state_timestamp_mode",
+                value=self.state_timestamp_mode,
+            ),
+            KeyValue(
+                key="missing_measured_joints",
+                value=",".join(self.missing_measured_joints),
+            ),
             KeyValue(key="command_count", value=str(self.command_count)),
             KeyValue(key="pending_requests", value=str(len(self.transport.pending))),
             KeyValue(key="expired_requests", value=str(self.request_expirations)),
             KeyValue(key="malformed_responses", value=str(self.malformed_responses)),
+            KeyValue(
+                key="late_state_responses",
+                value=str(self.transport.late_responses),
+            ),
+            KeyValue(
+                key="last_state_response_age_ms",
+                value=f"{self.transport.last_response_age_sec * 1000.0:.3f}",
+            ),
             KeyValue(
                 key="state_clock_offset_ms",
                 value=f"{self.last_state_clock_offset_ms:.3f}",

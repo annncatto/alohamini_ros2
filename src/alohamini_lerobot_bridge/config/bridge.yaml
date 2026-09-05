@@ -7,6 +7,9 @@ alohamini_lerobot_bridge:
     rate_hz: 50.0
     observation_timeout_sec: 0.5
     request_timeout_sec: 1.0
+    # Reject genuinely delayed replies before receipt-time stamping can make
+    # their state appear fresh to MoveIt.
+    max_state_response_age_sec: 0.25
     command_timeout_sec: 0.5
     trajectory_hold_sec: 0.25
     arm_path_tolerance_rad: 0.35
@@ -47,7 +50,8 @@ alohamini_lerobot_bridge:
     # Empty uses the packaged authoritative mapping. Set to a reviewed
     # machine-profile directory containing hardware_joint_map_{left,right}.yaml.
     arm_mapping_dir: ""
-    # Host capture stamps are required for camera/TF hand-eye synchronization.
-    # Pi and ROS PC clocks should be synchronized with chrony/NTP.
-    state_timestamp_mode: host_wall
+    # Receipt time keeps MoveIt freshness checks on the ROS computer's clock.
+    # Select host_wall explicitly for timestamp-matched camera/TF calibration,
+    # after synchronizing the Pi and ROS computer clocks with chrony/NTP.
+    state_timestamp_mode: receipt
     max_clock_offset_ms: 250.0

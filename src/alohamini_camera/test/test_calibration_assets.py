@@ -32,6 +32,7 @@ def test_runtime_configuration_enables_all_five_camera_streams():
         "wrist_left",
         "wrist_right",
     ]
+    assert config["timestamp_mode"] == "receipt"
     assert config["backward"]["frame_id"] == "backward_camera_optical"
     assert config["chest"]["frame_id"] == "chest_camera_optical"
 

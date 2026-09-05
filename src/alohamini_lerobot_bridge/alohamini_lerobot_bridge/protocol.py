@@ -412,13 +412,19 @@ class ZmqHostTransport:
         command_port: int = 5555,
         observation_port: int = 5556,
         request_window: int = 3,
+        max_response_age_sec: float = 0.25,
         context: zmq.Context | None = None,
     ) -> None:
         if request_window < 1:
             raise ValueError("request_window must be at least one")
+        if not math.isfinite(max_response_age_sec) or max_response_age_sec <= 0.0:
+            raise ValueError("max_response_age_sec must be finite and positive")
         self.context = context or zmq.Context()
         self.owns_context = context is None
         self.request_window = request_window
+        self.max_response_age_sec = max_response_age_sec
+        self.late_responses = 0
+        self.last_response_age_sec = math.nan
         self.command = self.context.socket(zmq.PUSH)
         self.command.setsockopt(zmq.CONFLATE, 1)
         self.command.setsockopt(zmq.LINGER, 0)
@@ -474,8 +480,17 @@ class ZmqHostTransport:
             if matching_index is None:
                 malformed += 1
                 continue
+            response_age_sec = max(
+                0.0, time.monotonic() - self.pending[matching_index][1]
+            )
+            self.last_response_age_sec = response_age_sec
             for _ in range(matching_index + 1):
                 self.pending.popleft()
+            # Receipt-time stamping intentionally ignores wall-clock offset,
+            # but it must not make a genuinely delayed state look fresh.
+            if response_age_sec > self.max_response_age_sec:
+                self.late_responses += 1
+                continue
             try:
                 decoded = json.loads(parts[1].decode("utf-8"))
             except (UnicodeDecodeError, json.JSONDecodeError):

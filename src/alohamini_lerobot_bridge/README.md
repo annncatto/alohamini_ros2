@@ -28,6 +28,15 @@ is not encoder position, odometry, or control feedback. That derived message
 also holds the MoveIt virtual root joints at zero, anchoring `root -> base_link`
 without claiming to provide odometry.
 
+Measured joint states use ROS receipt time by default so MoveIt compares state
+freshness against the same clock. For timestamp-matched hand-eye calibration,
+select `state_timestamp_mode:=host_wall` only after synchronizing the Host and
+ROS computer clocks. A matched state reply older than
+`max_state_response_age_sec` (250 ms by default) is rejected before receipt-time
+stamping, so transport delay cannot make an old measurement appear fresh.
+Bridge diagnostics report late replies and any measured MoveIt joints that are
+absent from a Host observation.
+
 The encoder-derived Host lift range is calibrated as physical `[0, 600] mm`
 and mapped to URDF `vertical_move [-0.3, +0.3] m`; values beyond the confirmed
 mechanical endpoints are clamped for visualization.

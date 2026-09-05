@@ -6,6 +6,7 @@ from collections import deque
 import pytest
 import zmq
 
+import alohamini_lerobot_bridge.protocol as protocol_module
 from alohamini_lerobot_bridge.protocol import (
     BodyVelocity,
     CommandGate,
@@ -358,6 +359,9 @@ def test_state_transport_rejects_camera_frames_and_unmatched_tokens():
     valid_token = b"ros-1:state"
     state = json.dumps({"_images": [], "x.vel": 0.0}).encode()
     transport.pending = deque([(valid_token, time.monotonic())])
+    transport.max_response_age_sec = 0.25
+    transport.late_responses = 0
+    transport.last_response_age_sec = math.nan
     transport.observation = _FakeObservationSocket(
         [
             [b"unknown:state", state],
@@ -370,3 +374,23 @@ def test_state_transport_rejects_camera_frames_and_unmatched_tokens():
 
     assert latest == {"_images": [], "x.vel": 0.0}
     assert malformed == 2
+
+
+def test_state_transport_rejects_late_matched_response(monkeypatch):
+    transport = ZmqHostTransport.__new__(ZmqHostTransport)
+    valid_token = b"ros-1:state"
+    state = json.dumps({"_images": [], "x.vel": 0.0}).encode()
+    transport.pending = deque([(valid_token, 10.0)])
+    transport.max_response_age_sec = 0.25
+    transport.late_responses = 0
+    transport.last_response_age_sec = math.nan
+    transport.observation = _FakeObservationSocket([[valid_token, state]])
+    monkeypatch.setattr(protocol_module.time, "monotonic", lambda: 10.3)
+
+    latest, malformed = transport.receive_latest()
+
+    assert latest is None
+    assert malformed == 0
+    assert transport.late_responses == 1
+    assert transport.last_response_age_sec == pytest.approx(0.3)
+    assert not transport.pending

@@ -116,9 +116,17 @@ ros2 run alohamini_calibration calibrate_camera_intrinsics \
   --output ~/camera_calibration/wrist_right_candidate.yaml
 ```
 
-For eye-in-hand capture, start the camera node in `timestamp_mode:=host_wall`,
-synchronize the Pi and ROS computer clocks, fix the ChArUco board in the world,
-and move the arm slowly through diverse poses. The capture tool is read-only:
+For eye-in-hand capture, synchronize the Pi and ROS computer clocks and start
+Bringup with both camera and robot state on Host wall time:
+
+```bash
+ros2 launch alohamini_bringup hardware.launch.py host:=PI5_IP \
+  enable_cameras:=true camera_timestamp_mode:=host_wall \
+  state_timestamp_mode:=host_wall
+```
+
+Fix the ChArUco board in the world and move the arm slowly through diverse
+poses. The capture tool is read-only:
 
 ```bash
 ros2 run alohamini_calibration capture_hand_eye_samples \

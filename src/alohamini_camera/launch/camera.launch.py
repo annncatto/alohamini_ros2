@@ -15,7 +15,7 @@ def generate_launch_description() -> LaunchDescription:
             DeclareLaunchArgument("host", default_value="127.0.0.1"),
             DeclareLaunchArgument("port", default_value="5557"),
             DeclareLaunchArgument("publish_raw", default_value="true"),
-            DeclareLaunchArgument("timestamp_mode", default_value="host_wall"),
+            DeclareLaunchArgument("timestamp_mode", default_value="receipt"),
             DeclareLaunchArgument("enable_extrinsics", default_value="false"),
             DeclareLaunchArgument("extrinsics", default_value=""),
             DeclareLaunchArgument("allow_candidate_extrinsics", default_value="false"),

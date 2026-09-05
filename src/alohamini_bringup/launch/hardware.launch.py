@@ -43,10 +43,14 @@ def generate_launch_description() -> LaunchDescription:
         [
             DeclareLaunchArgument("host", default_value="127.0.0.1"),
             DeclareLaunchArgument("arm_mapping_dir", default_value=""),
+            DeclareLaunchArgument("state_timestamp_mode", default_value="receipt"),
+            DeclareLaunchArgument(
+                "max_state_response_age_sec", default_value="0.25"
+            ),
             DeclareLaunchArgument("enable_cameras", default_value="true"),
             DeclareLaunchArgument("camera_stream_port", default_value="5557"),
             DeclareLaunchArgument("camera_publish_raw", default_value="true"),
-            DeclareLaunchArgument("camera_timestamp_mode", default_value="host_wall"),
+            DeclareLaunchArgument("camera_timestamp_mode", default_value="receipt"),
             DeclareLaunchArgument("enable_camera_extrinsics", default_value="false"),
             DeclareLaunchArgument("camera_extrinsics", default_value=""),
             DeclareLaunchArgument(
@@ -72,6 +76,12 @@ def generate_launch_description() -> LaunchDescription:
                 launch_arguments={
                     "host": LaunchConfiguration("host"),
                     "arm_mapping_dir": LaunchConfiguration("arm_mapping_dir"),
+                    "state_timestamp_mode": LaunchConfiguration(
+                        "state_timestamp_mode"
+                    ),
+                    "max_state_response_age_sec": LaunchConfiguration(
+                        "max_state_response_age_sec"
+                    ),
                 }.items(),
             ),
             IncludeLaunchDescription(

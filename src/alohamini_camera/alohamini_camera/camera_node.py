@@ -39,7 +39,7 @@ class AlohaMiniCameraNode(Node):
         self.declare_parameter("port", 5557)
         self.declare_parameter("camera_names", ["forward", "wrist_right"])
         self.declare_parameter("publish_raw", True)
-        self.declare_parameter("timestamp_mode", "host_wall")
+        self.declare_parameter("timestamp_mode", "receipt")
         self.declare_parameter("max_transport_latency_ms", 250.0)
         self.declare_parameter("poll_rate_hz", 200.0)
         calibration_share = Path(get_package_share_directory("alohamini_calibration"))
