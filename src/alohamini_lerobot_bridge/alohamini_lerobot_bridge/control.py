@@ -362,6 +362,8 @@ class CommandComposer:
             ),
         }
         self.enabled = False
+        self.epoch = 0
+        self._accepted_goals = {}
         self.lift_jog_lookahead = float(lift_jog_lookahead)
         if not math.isfinite(self.lift_jog_lookahead) or self.lift_jog_lookahead <= 0.0:
             raise ValueError("lift_jog_lookahead must be finite and positive")
@@ -379,6 +381,8 @@ class CommandComposer:
 
     def enable(self) -> None:
         with self.lock:
+            self.epoch += 1
+            self._accepted_goals.clear()
             self.enabled = True
             self.base.enable()
             self.stale_stop_pending = False
@@ -393,8 +397,10 @@ class CommandComposer:
                 resource.stream_positions = None
                 resource.desired = None
 
-    def disable(self) -> bool:
+    def disable(self, reason: str = "ROS command channel disabled") -> bool:
         with self.lock:
+            self.epoch += 1
+            self._accepted_goals.clear()
             should_stop = self.enabled and self.ever_commanded
             self.enabled = False
             self.base.disable()
@@ -405,7 +411,7 @@ class CommandComposer:
             for resource in self.resources.values():
                 resource._finish(
                     TerminalState.ABORTED,
-                    "ROS command channel disabled",
+                    reason,
                     None,
                     now,
                     hold=False,
@@ -523,6 +529,13 @@ class CommandComposer:
                 timeout,
             )
 
+    def accept_goal(self, request, epoch: int) -> bool:
+        with self.lock:
+            if not self.enabled or epoch != self.epoch or len(self._accepted_goals) >= 256:
+                return False
+            self._accepted_goals[id(request)] = (request, epoch)
+            return True
+
     def start_trajectory(
         self,
         resource: str,
@@ -531,8 +544,14 @@ class CommandComposer:
         measured: dict[str, float],
         fresh: bool,
         now: float | None = None,
+        *,
+        accepted_request=None,
     ) -> int:
         with self.lock:
+            if accepted_request is not None:
+                accepted = self._accepted_goals.pop(id(accepted_request), None)
+                if accepted is None or accepted[0] is not accepted_request or accepted[1] != self.epoch:
+                    raise ValueError("Goal belongs to an expired command epoch")
             if not self.enabled:
                 raise ValueError("ROS command channel is disabled")
             if not fresh:
@@ -581,6 +600,8 @@ class CommandComposer:
             ):
                 permitted = False
             if not permitted:
+                self.epoch += 1
+                self._accepted_goals.clear()
                 self.lift_jog_active = False
                 self.lift_jog_velocity = 0.0
                 self.lift_jog_stop_pending = False

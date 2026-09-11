@@ -6,9 +6,9 @@ import time
 from collections import deque
 from dataclasses import dataclass
 from typing import Any
+from uuid import uuid4
 
 import zmq
-
 
 ARM_JOINTS = (
     "shoulder_pan",
@@ -86,7 +86,7 @@ class JointMapper:
         self, calibration: dict[str, Any], lift_calibration: dict[str, Any] | None = None
     ) -> None:
         if "ticks_per_revolution" in calibration:
-            calibrations = {side: calibration for side in ("left", "right")}
+            calibrations = dict.fromkeys(("left", "right"), calibration)
         else:
             calibrations = calibration
         if set(calibrations) != {"left", "right"}:
@@ -435,6 +435,9 @@ class ZmqHostTransport:
         self.observation.setsockopt(zmq.LINGER, 0)
         self.observation.connect(f"tcp://{host}:{observation_port}")
         self.sequence = 0
+        self.client_id = uuid4().hex
+        self.command_sequence = 0
+        self.safety_status: dict[str, Any] = {}
         self.pending: deque[tuple[bytes, float]] = deque()
 
     def fill_state_requests(self) -> None:
@@ -503,9 +506,23 @@ class ZmqHostTransport:
         return latest, malformed
 
     def send_action(self, action: dict[str, float]) -> bool:
+        payload = dict(action)
+        if self.safety_status.get("version") == 1 and "control_owner" in self.safety_status:
+            if not isinstance(self.safety_status.get("host_session_id"), str):
+                return False
+            if self.safety_status["control_owner"] not in (None, self.client_id):
+                return False
+            self.command_sequence += 1
+            payload["_command"] = {
+                "client_id": self.client_id,
+                "sequence": self.command_sequence,
+                "host_session_id": self.safety_status["host_session_id"],
+            }
+            if "control_epoch" in self.safety_status:
+                payload["_command"]["control_epoch"] = self.safety_status["control_epoch"]
         try:
             self.command.send_string(
-                json.dumps(action, separators=(",", ":")), flags=zmq.NOBLOCK
+                json.dumps(payload, separators=(",", ":")), flags=zmq.NOBLOCK
             )
             return True
         except zmq.Again:

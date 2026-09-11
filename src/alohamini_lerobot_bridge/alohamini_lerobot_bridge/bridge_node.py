@@ -9,11 +9,11 @@ from pathlib import Path
 import rclpy
 import yaml
 from ament_index_python.packages import get_package_share_directory
+from builtin_interfaces.msg import Time as TimeMsg
 from control_msgs.action import FollowJointTrajectory, GripperCommand
 from control_msgs.msg import JointJog
 from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus, KeyValue
 from geometry_msgs.msg import Twist, TwistStamped
-from builtin_interfaces.msg import Time as TimeMsg
 from rclpy.action import ActionServer, CancelResponse, GoalResponse
 from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.executors import ExternalShutdownException, MultiThreadedExecutor
@@ -33,6 +33,7 @@ from .protocol import (
     validate_state_observation,
     wheel_velocity_from_body,
 )
+from .safety import HostSafety
 
 
 def clamp(value: float, limit: float) -> float:
@@ -146,8 +147,7 @@ class AlohaMiniLeRobotBridge(Node):
         self.expected_model = str(self.get_parameter("expected_robot_model").value)
         self.require_model_match = bool(self.get_parameter("require_model_match").value)
         self.command_timeout = float(self.get_parameter("command_timeout_sec").value)
-        # Port 5555 has no lease protocol.  Never claim it at startup: a fresh
-        # observation plus an explicit service call is required every run.
+        # Fresh feedback and explicit enable are required before acquiring control.
         self.composer = CommandComposer(
             self.mapper,
             self.command_timeout,
@@ -180,6 +180,8 @@ class AlohaMiniLeRobotBridge(Node):
                 raise ValueError(f"{name} must be finite and non-zero")
 
         self.latest_observation: dict | None = None
+        self.host_safety = HostSafety(self.transport.client_id)
+        self.host_safety_fault = ""
         self.latest_positions: dict[str, float] = {}
         self.robot_metadata: dict | None = None
         self.last_observation_monotonic: float | None = None
@@ -195,6 +197,7 @@ class AlohaMiniLeRobotBridge(Node):
         self.observation_count = 0
         self.command_count = 0
         self.last_disabled_arm_jog_warning = 0.0
+        self.command_enabled_at_ns = 0
         self.measured = BodyVelocity()
         self.wheel_positions = [0.0, 0.0, 0.0]
         self.last_integrate = time.monotonic()
@@ -324,6 +327,8 @@ class AlohaMiniLeRobotBridge(Node):
     def on_lift_jog(self, message: JointJog) -> None:
         if not self.command_gate.enabled:
             return
+        if not self.jog_is_current(message):
+            return
         if message.joint_names != ["vertical_move"] or len(message.velocities) != 1:
             self.get_logger().warning(
                 "Rejected lift JointJog: require vertical_move and one velocity"
@@ -360,6 +365,8 @@ class AlohaMiniLeRobotBridge(Node):
                     f"Ignoring {side} arm JointJog: ROS command channel is disabled; "
                     "call ~/command_enable first"
                 )
+            return
+        if not self.jog_is_current(message):
             return
         expected = [
             f"{side}_{suffix}"
@@ -404,6 +411,11 @@ class AlohaMiniLeRobotBridge(Node):
         except ValueError as exc:
             self.get_logger().warning(f"Rejected {side} arm JointJog: {exc}")
 
+    def jog_is_current(self, message: JointJog) -> bool:
+        stamp = message.header.stamp.sec * 1_000_000_000 + message.header.stamp.nanosec
+        now = self.get_clock().now().nanoseconds
+        return stamp >= self.command_enabled_at_ns and 0 <= now - stamp <= int(self.composer.command_timeout * 1e9)
+
     def on_command_enable(self, request: SetBool.Request, response: SetBool.Response):
         if request.data:
             if not self.observation_fresh():
@@ -418,6 +430,12 @@ class AlohaMiniLeRobotBridge(Node):
                     "Host robot_model does not match expected_robot_model"
                 )
                 return response
+            reason = self.host_safety.blocked(self.transport.safety_status)
+            if reason:
+                response.success = False
+                response.message = reason
+                return response
+            self.host_safety_fault = ""
             # Re-enabling is also an epoch boundary. Stop an already-started
             # stream before discarding it, then wait for another new /cmd_vel.
             stop_action = self.composer.disable_action(
@@ -429,6 +447,7 @@ class AlohaMiniLeRobotBridge(Node):
             if stop_action is not None:
                 self.transport.send_action(stop_action)
             self.composer.enable()
+            self.command_enabled_at_ns = self.get_clock().now().nanoseconds
             response.success = True
             response.message = (
                 "ROS command channel enabled; every control resource remains unarmed "
@@ -472,6 +491,18 @@ class AlohaMiniLeRobotBridge(Node):
 
         self.robot_metadata = metadata
         self.latest_observation = observation
+        safety_status = observation.get("_safety", {})
+        self.transport.safety_status = dict(safety_status) if isinstance(safety_status, dict) else {}
+        safety_reason = self.host_safety.update(self.transport.safety_status)
+        if safety_reason:
+            # Stop the complete execution epoch, including paired-arm and base motion.
+            stop_action = self.composer.disable_action(positions, metadata, True)
+            self.composer.disable(safety_reason)
+            if stop_action is not None:
+                self.transport.send_action(stop_action)
+            if safety_reason != self.host_safety_fault:
+                self.get_logger().error(safety_reason)
+            self.host_safety_fault = safety_reason
         self.latest_positions = positions
         self.missing_measured_joints = sorted(
             self.expected_measured_joints.difference(positions)
@@ -626,6 +657,7 @@ class AlohaMiniLeRobotBridge(Node):
                 )
 
     def on_trajectory_goal(self, goal, resource: str) -> GoalResponse:
+        epoch = self.composer.epoch
         if not self.composer.enabled:
             self.get_logger().warning(
                 f"Rejected {resource} goal: commands are disabled"
@@ -647,9 +679,10 @@ class AlohaMiniLeRobotBridge(Node):
         except (KeyError, TypeError, ValueError) as error:
             self.get_logger().warning(f"Rejected {resource} goal: {error}")
             return GoalResponse.REJECT
-        return GoalResponse.ACCEPT
+        return GoalResponse.ACCEPT if self.composer.accept_goal(goal, epoch) else GoalResponse.REJECT
 
     def on_gripper_goal(self, goal, resource: str) -> GoalResponse:
+        epoch = self.composer.epoch
         if not self.composer.enabled:
             self.get_logger().warning(
                 f"Rejected {resource} goal: commands are disabled"
@@ -687,7 +720,7 @@ class AlohaMiniLeRobotBridge(Node):
         except (KeyError, TypeError, ValueError) as error:
             self.get_logger().warning(f"Rejected {resource} goal: {error}")
             return GoalResponse.REJECT
-        return GoalResponse.ACCEPT
+        return GoalResponse.ACCEPT if self.composer.accept_goal(goal, epoch) else GoalResponse.REJECT
 
     @staticmethod
     def on_trajectory_cancel(_goal_handle) -> CancelResponse:
@@ -735,6 +768,7 @@ class AlohaMiniLeRobotBridge(Node):
                 samples,
                 self.latest_positions,
                 self.observation_fresh(),
+                accepted_request=goal_handle.request,
             )
         except (KeyError, TypeError, ValueError) as error:
             goal_handle.abort()
@@ -819,6 +853,7 @@ class AlohaMiniLeRobotBridge(Node):
                 ],
                 self.latest_positions,
                 self.observation_fresh(),
+                accepted_request=goal_handle.request,
             )
         except (KeyError, TypeError, ValueError) as error:
             self.get_logger().warning(f"Failed to start {resource} goal: {error}")
@@ -877,6 +912,9 @@ class AlohaMiniLeRobotBridge(Node):
         if not self.observation_fresh():
             status.level = DiagnosticStatus.ERROR
             status.message = "Host observation stale or unavailable"
+        elif self.host_safety_fault:
+            status.level = DiagnosticStatus.ERROR
+            status.message = self.host_safety_fault
         elif self.require_model_match and not self.model_matches():
             status.level = DiagnosticStatus.ERROR
             status.message = "Host robot model mismatch"

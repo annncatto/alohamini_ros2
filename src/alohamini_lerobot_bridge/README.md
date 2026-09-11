@@ -51,9 +51,18 @@ This version does not connect lidar, an external odometer, or an IMU, and does
 not launch SLAM, Nav2, Servo, or state estimation. It publishes neither
 `/odom` nor `odom -> base_link` TF.
 
-Commands are disabled by default. This matters because the Host's port 5555 has
-no lease protocol: two PUSH clients would race in the Host PULL queue. After
-stopping every other LeRobot command client and confirming fresh diagnostics:
+Commands are disabled by default. Update the LeRobot Host and PC clients before
+enabling ROS control. The Host grants control to the first command writer;
+other clients may observe state but cannot replace its commands. Stop the current
+controller and wait for the Host watchdog to stop motion and release ownership
+(1 second by default), then confirm fresh diagnostics:
+
+Commands carry the current Host session and control epoch. Goals accepted before
+a protection stop or re-enable are invalidated, including goals not yet executing.
+JointJog publishers must set `header.stamp` from the same ROS clock; messages older
+than the current enable boundary or command timeout are ignored. Unstamped
+`/cmd_vel` messages have no publisher-time replay guarantee; stop their publisher
+before re-enabling control.
 
 ```bash
 ros2 service call /alohamini_lerobot_bridge/command_enable std_srvs/srv/SetBool '{data: true}'
@@ -69,6 +78,19 @@ is armed independently by a post-enable command. The standard interfaces are:
 - lift jog: `/lift_controller/joint_jog` (`control_msgs/msg/JointJog`);
 - left gripper: `/left_gripper_controller/gripper_cmd`;
 - right gripper: `/right_gripper_controller/gripper_cmd`.
+
+Host joint protection, watchdog events, Host restarts and ownership conflicts
+disable the ROS command channel and abort active trajectories. A measured stop
+command is sent only when the Host is available to this client. Diagnostics and
+action results report the fault. Clear the obstruction, release any joint hold
+with reverse teleoperation, stop that controller and re-enable ROS control before
+sending a new goal. Previous trajectories are not resumed. Normal gripper contact
+does not disable the command channel.
+
+Older Hosts without protection/ownership metadata remain usable for reading state,
+but ROS command enable is rejected until the Host is updated. The Host's legacy
+unidentified command format cannot distinguish multiple old clients; update all
+writers for mutual exclusion between ROS and LeRobot.
 
 The gripper actions use the corresponding URDF revolute-joint coordinate, so
 their `position` value is in radians. MoveIt exposes each gripper as a planning
